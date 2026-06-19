@@ -1,0 +1,48 @@
+# Секреты и локальная конфигурация
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Виртуальное окружение
+.venv/
+venv/
+ENV/
+
+# Тесты и линтеры
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# IDE / ОС
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Логи и временные файлы
+*.log
+.cache/
+
+# Сгенерированные артефакты примеров (ответы LLM)
+examples/answers/

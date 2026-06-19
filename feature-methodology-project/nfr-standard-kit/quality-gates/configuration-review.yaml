@@ -1,0 +1,20 @@
+gate: configuration-review
+description: Configuration NFR quality gate aligned with canonical transfer example.
+spec: nfr-standard-kit/spec-kit/configuration.schema.yaml
+canonicalExample: nfr-standard-kit/examples/account-transfer-configuration-example.md
+
+blockingChecks:
+  - id: CONF-GATE-001
+    check: parameters_table_complete
+    description: Each in-scope parameter has type, level, frequency, scope, storage, default, description.
+  - id: CONF-GATE-002
+    check: validation_impact_rollback
+    description: Each parameter documents validation, impact on change and rollback procedure.
+  - id: CONF-GATE-003
+    check: secret_not_in_configmap
+    description: Secret-level parameters are not stored as plain ConfigMap entries.
+
+warningChecks:
+  - id: CONF-WARN-001
+    check: static_change_without_restart_note
+    description: Static parameters lack restart/rollout note when required.

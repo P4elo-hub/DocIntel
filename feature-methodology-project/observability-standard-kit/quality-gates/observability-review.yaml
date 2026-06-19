@@ -1,0 +1,35 @@
+gate: observability-review
+description: General quality gate for logging and metrics artifacts.
+spec: observability-standard-kit/spec-kit/observability-page.schema.yaml
+canonicalExamples:
+  logging: observability-standard-kit/examples/account-transfer-logging-example.md
+  metrics: observability-standard-kit/examples/account-transfer-metrics-example.md
+
+blockingChecks:
+  - id: OBS-GATE-000
+    check: clarification_first_completed
+    description: Clarification questionnaire completed before final artifacts unless draft/evidence/B authorized.
+    spec: observability-standard-kit/spec-kit/observability-clarification.schema.yaml
+  - id: OBS-GATE-001
+    check: document_title_format
+    description: Logging or metrics title matches required pattern without Пример.
+  - id: OBS-GATE-002
+    check: no_std_ids
+    forbiddenPattern: "СТД-"
+  - id: OBS-GATE-003
+    check: domain_gate_applied
+    description: logging-review and/or metrics-review applied.
+  - id: OBS-GATE-004
+    check: no_unresolved_markers
+    forbidden:
+      - TODO
+      - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+  - id: OBS-GATE-007
+    check: gaps_registry_synced
+    description: Gaps и допущения synced with DESIGN-OBS/GAP-OBS inline markers.
+    requiredSection: Gaps и допущения
+
+warningChecks:
+  - id: OBS-WARN-001
+    check: canonical_example_copied
+    description: Transfer example event/metric rows used for different feature without DESIGN-OBS.

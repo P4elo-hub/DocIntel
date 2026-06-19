@@ -1,0 +1,64 @@
+artifact: security
+description: Contract for security NFR documentation.
+language: ru
+canonicalExample: null
+sourceStandardSection: "7.3 Безопасность"
+
+documentTitle:
+  pattern: "^#### NFR — .+ \\(Безопасность\\)$"
+
+clarificationPolicyRef: nfr-standard-kit/spec-kit/nfr-clarification.schema.yaml
+clarificationBeforeFinalArtifact:
+  mandatory: true
+
+note: >
+  В исходном стандарте раздел 7 не содержит эталонного примера в блоке
+  «Переводы между счетами». Структура ниже выводится из СТД-БЕЗ-01 и СТД-БЕЗ-02
+  для заполнения по evidence.
+
+requiredSections:
+  - Требования к безопасности
+  - Чувствительные данные и защита
+
+securityRequirements:
+  recommendedTables:
+    authentication:
+      columns:
+        - Сценарий / Операция
+        - Механизм аутентификации
+        - Требование
+        - Условие / порог
+    authorization:
+      columns:
+        - Роль / Субъект
+        - Ресурс / Операция
+        - Разрешение
+        - Условие
+    transportAndApi:
+      columns:
+        - Граница
+        - Требование
+        - Реализация / политика
+    auditAndLogging:
+      columns:
+        - Событие
+        - Что логировать
+        - Маскирование / исключения
+
+sensitiveData:
+  table:
+    columns:
+      - Данные / Поле
+      - Класс чувствительности
+      - Хранение
+      - Передача
+      - Отображение (UI/API)
+      - Шифрование / маскирование
+      - Срок хранения / удаление
+  protectionMechanisms:
+    - encryption at rest
+    - encryption in transit
+    - masking in logs
+    - masking in UI
+    - tokenization
+    - access control

@@ -1,0 +1,160 @@
+gate: data-model-review
+description: Quality gate for data model artifacts aligned with section 5.1, spec, template and canonical example.
+scope: data-model
+spec: data-standard-kit/spec-kit/data-model.schema.yaml
+canonicalExample: data-standard-kit/examples/payment-processing-data-model-example.md
+
+blockingChecks:
+  - id: DM-GATE-001
+    check: document_title_format
+    description: Document title matches `#### Модель данных — <name>` and does not contain `Пример:`.
+    requiredPattern: "^#### Модель данных — .+$"
+    forbidden:
+      - "Пример: Модель данных"
+  - id: DM-GATE-002
+    check: required_structure_present
+    description: Data model contains all required sections from the spec and canonical example.
+    requiredFields:
+      - Контекст изменения
+      - ER-диаграмма
+      - Новые и изменённые сущности
+      - Связи между сущностями
+      - Область изменения
+      - Gaps и допущения
+  - id: DM-GATE-003
+    check: section_heading_format
+    description: Section headings use bold labels with trailing colon, matching the template.
+    requiredPattern: "^\\*\\*.+:\\*\\*$"
+  - id: DM-GATE-004
+    check: context_table_complete
+    description: Context table contains feature name, storage type, engine, change type and related artifacts.
+    requiredRows:
+      - Фича / изменение
+      - Тип хранилища
+      - СУБД / движок
+      - Тип изменения
+      - Связанные артефакты
+  - id: DM-GATE-005
+    check: er_diagram_present
+    description: ER diagram in PlantUML is present when storage structure changes.
+    requiredMarkers:
+      - "@startuml"
+      - "@enduml"
+  - id: DM-GATE-006
+    check: entity_attribute_tables_complete
+    description: Each new or changed entity has an attribute table with required columns.
+    requiredColumns:
+      - Атрибут
+      - Тип
+      - Nullable
+      - Описание
+      - Ограничения
+  - id: DM-GATE-007
+    check: relationships_table_complete
+    description: Relationships table documents entity pairs, cardinality, FK/reference and description.
+    requiredColumns:
+      - Сущность 1
+      - Сущность 2
+      - Тип связи
+      - FK / Reference
+      - Описание
+  - id: DM-GATE-008
+    check: no_raw_many_to_many
+    description: Relationships table does not contain raw N:M or M:N cardinality.
+    forbiddenValues:
+      - "N:M"
+      - "M:N"
+  - id: DM-GATE-009
+    check: junction_policy_applied
+    description: If business relation is many-to-many, a junction entity/table is documented with PK and references to both sides.
+  - id: DM-GATE-010
+    check: impact_scope_documented
+    description: Impact scope lists new, changed, removed/deprecated entities and affected relationships/constraints.
+    requiredColumns:
+      - Категория
+      - Элементы
+  - id: DM-GATE-011
+    check: gaps_and_assumptions_table_present
+    description: Gaps and assumptions table exists and uses GAP-DATA-* / ASM-DATA-* IDs or explicit empty state.
+    requiredColumns:
+      - ID
+      - Где найдено
+      - Что неизвестно / что предположено
+      - Как закрыть / подтвердить
+    acceptedEmptyState:
+      - Gaps не выявлены
+  - id: DM-GATE-012
+    check: gap_ids_linked
+    description: Every GAP-DATA-* marker in the artifact has a matching row in Gaps и допущения.
+  - id: DM-GATE-013
+    check: assumption_ids_linked
+    description: Every ASM-DATA-* marker in the artifact has a matching row in Gaps и допущения.
+  - id: DM-GATE-014
+    check: no_forbidden_markers_or_standard_ids
+    description: Artifact does not contain unresolved markers or source standard IDs.
+    forbidden:
+      - TODO
+      - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+      - TRACE-
+      - OQ-
+      - CONFLICT-
+      - "Evidence / Traceability"
+      - "СТД-"
+  - id: DM-GATE-015
+    check: no_migration_scripts_in_model
+    description: Data model artifact does not include DDL/DML migration scripts; those belong to migrations artifact.
+    forbiddenPatterns:
+      - "CREATE TABLE"
+      - "ALTER TABLE"
+      - "DROP TABLE"
+      - "INSERT INTO"
+      - "UPDATE "
+      - "DELETE FROM"
+      - "Rollback"
+  - id: DM-GATE-016
+    check: no_unsupported_schema_claims
+    description: Types, constraints, indexes, enum values, defaults and FK behavior are present only when backed by evidence, DESIGN-DATA-* authorization, or explicit user confirmation.
+  - id: DM-GATE-017
+    check: clarification_first_respected
+    description: Final artifact was not produced from canonical example alone without user confirmation or greenfield authorization recorded in Gaps и допущения.
+    forbiddenWithoutAuthorization:
+      - full attribute tables copied from canonical example on first short user prompt
+    requiredWhenGreenfieldDesign:
+      - DESIGN-DATA
+
+warningChecks:
+  - id: DM-WARN-001
+    check: canonical_example_not_followed
+    description: Section order or table granularity significantly differs from canonical data model example.
+  - id: DM-WARN-002
+    check: er_diagram_not_aligned_with_tables
+    description: ER diagram entities or cardinalities differ from attribute/relationship tables.
+  - id: DM-WARN-003
+    check: missing_new_entity_highlight
+    description: New entities are not visually highlighted in ER diagram when example style recommends it.
+  - id: DM-WARN-004
+    check: weak_entity_naming
+    description: Entity names mix business and physical naming inconsistently without ASM-DATA-* explanation.
+  - id: DM-WARN-005
+    check: missing_status_or_audit_fields
+    description: Lifecycle entity appears to need status or audit fields, but they are absent and not marked as gap.
+  - id: DM-WARN-006
+    check: junction_section_missing_when_needed
+    description: Business many-to-many relation is implied in prose but junction section is absent.
+  - id: DM-WARN-007
+    check: impact_scope_too_shallow
+    description: Impact scope does not mention indexes/constraints introduced by the feature.
+  - id: DM-WARN-008
+    check: storage_type_mismatch
+    description: Terminology does not match declared storage type (SQL terms used for document DB or vice versa).
+  - id: DM-WARN-009
+    check: clarification_skipped
+    description: User provided only a short prompt but agent produced detailed attribute tables without prior clarification or DESIGN-DATA authorization.
+
+decision:
+  approved:
+    condition: No blocking checks failed.
+  approved-with-warnings:
+    condition: No blocking checks failed, at least one warning remains.
+  needs-rework:
+    condition: One or more blocking checks failed.

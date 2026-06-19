@@ -1,0 +1,162 @@
+gate: use-case-review
+description: Quality gate for Use Case artifacts aligned with the current spec, template and canonical example.
+scope: use-case
+spec: use-case-standard-kit/spec-kit/use-case.schema.yaml
+canonicalExample: use-case-standard-kit/examples/transfer-between-accounts-use-case-example.md
+
+blockingChecks:
+  - id: UC-GATE-001
+    check: document_title_format
+    description: Document title matches `#### Use Case — <actor goal>` and does not contain `Пример:`.
+    requiredPattern: "^#### Use Case — .+$"
+    forbidden:
+      - "Пример: Use Case"
+  - id: UC-GATE-002
+    check: required_structure_present
+    description: Use Case contains all required sections from the spec and canonical example.
+    requiredFields:
+      - Структура Use Case
+      - Предусловия
+      - Постусловия
+      - Бизнес-правила
+      - Основной сценарий — Happy Path
+      - Альтернативные сценарии
+      - Связи между Use Cases
+  - id: UC-GATE-003
+    check: section_heading_format
+    description: Section headings use bold labels with trailing colon, matching the template.
+    requiredPattern: "^\\*\\*.+:\\*\\*$"
+  - id: UC-GATE-004
+    check: structure_table_complete
+    description: Structure table contains title, actors, trigger, preconditions, postconditions and business rules.
+    requiredRows:
+      - Название
+      - Актор(ы)
+      - Триггер
+      - Предусловия
+      - Постусловия
+      - Бизнес-правила
+  - id: UC-GATE-005
+    check: actor_goal_title
+    description: Use Case title is phrased as an actor goal, using verb plus object.
+  - id: UC-GATE-006
+    check: preconditions_are_checkable
+    description: Preconditions are concrete and include checkable conditions.
+    requiredColumns:
+      - №
+      - Предусловие
+      - Проверяемое условие
+  - id: UC-GATE-007
+    check: postconditions_cover_outcomes
+    description: Postconditions cover successful completion and relevant unsuccessful business or technical outcomes.
+    requiredRows:
+      - Успех
+  - id: UC-GATE-008
+    check: business_rules_linked_to_steps
+    description: Business rules have stable BR IDs and are linked to scenario steps.
+    requiredColumns:
+      - ID
+      - Правило
+      - Применяется на шаге
+  - id: UC-GATE-009
+    check: main_scenario_numbering_sequential
+    description: Main scenario uses sequential steps `Шаг 1`, `Шаг 2`, `Шаг 3` without gaps.
+  - id: UC-GATE-010
+    check: main_scenario_steps_atomic
+    description: Each main scenario step describes one action by one actor or the system.
+  - id: UC-GATE-011
+    check: actor_system_actions_separated
+    description: Actor actions and system reactions are clearly separated.
+  - id: UC-GATE-012
+    check: explicit_condition_format
+    description: Every conditional branch in the main scenario uses explicit `ЕСЛИ / ТО / ИНАЧЕ` format.
+    requiredKeywords:
+      - ЕСЛИ
+      - ТО
+      - ИНАЧЕ
+  - id: UC-GATE-013
+    check: success_path_explicit
+    description: Every condition explicitly states the successful continuation path.
+    acceptedPatterns:
+      - "ТО сценарий продолжается с шага"
+      - "ТО перейти к проверке"
+      - "ТО выполнить"
+      - "ТО пометить"
+  - id: UC-GATE-014
+    check: alternative_path_explicit
+    description: Every unsuccessful condition explicitly points to an alternative scenario.
+    requiredPattern: "ПЕРЕЙТИ К альтернативному сценарию [0-9]+[a-z]"
+  - id: UC-GATE-015
+    check: alternative_scenarios_linked
+    description: Every branch reference in the main scenario has a matching alternative scenario.
+  - id: UC-GATE-016
+    check: alternative_scenarios_classified
+    description: Each alternative scenario is classified as validation error, business error, technical error or boundary case.
+    allowedClassifications:
+      - Ошибки валидации
+      - Бизнес-ошибки
+      - Технические ошибки
+      - Пограничные случаи
+  - id: UC-GATE-017
+    check: alternative_scenarios_have_exit
+    description: Each alternative scenario has a return point or explicit unsuccessful termination.
+    acceptedPatterns:
+      - "Возврат к шагу"
+      - "Сценарий завершается неуспешно"
+  - id: UC-GATE-018
+    check: relationships_documented
+    description: Relationships use markdown-safe values `include`, `extend` and `Generalization`, with step or extension point where required.
+    allowedValues:
+      - include
+      - extend
+      - Generalization
+  - id: UC-GATE-019
+    check: no_forbidden_markers_or_standard_ids
+    description: Artifact does not contain unresolved markers, source standard IDs, or angle-bracket relationship notation.
+    forbidden:
+      - TODO
+      - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+      - TRACE-
+      - OQ-
+      - CONFLICT-
+      - "Evidence / Traceability"
+      - "СТД-"
+      - "<<include>>"
+      - "<<extend>>"
+  - id: UC-GATE-020
+    check: no_unsupported_behavior_claims
+    description: Business limits, validation rules, statuses, retries, rollbacks, notifications and side effects are present only when backed by evidence.
+
+warningChecks:
+  - id: UC-WARN-001
+    check: canonical_example_not_followed
+    description: Section order or table granularity significantly differs from canonical Use Case example.
+  - id: UC-WARN-002
+    check: missing_relationships
+    description: Scenario appears to invoke another Use Case, but include, extend or generalization relationship is not documented.
+  - id: UC-WARN-003
+    check: weak_trigger
+    description: Trigger is vague and does not identify the event that starts the scenario.
+  - id: UC-WARN-004
+    check: broad_steps
+    description: Some steps combine multiple actions or mix actor action and system reaction.
+  - id: UC-WARN-005
+    check: alternatives_too_shallow
+    description: Alternative scenarios are named but do not describe system behavior and outcome.
+  - id: UC-WARN-006
+    check: business_rules_not_normalized
+    description: Business rules are embedded only in prose and not normalized as BR IDs.
+  - id: UC-WARN-007
+    check: implicit_success_path
+    description: A condition has an alternative path but the successful continuation is not explicit enough.
+  - id: UC-WARN-008
+    check: relationship_notation_inconsistent
+    description: Relationship notation differs in main scenario and relationship table.
+
+decision:
+  approved:
+    condition: No blocking checks failed.
+  approved-with-warnings:
+    condition: No blocking checks failed, at least one warning remains.
+  needs-rework:
+    condition: One or more blocking checks failed.

@@ -1,0 +1,56 @@
+gate: grpc-review
+description: gRPC-specific quality gate aligned with canonical gRPC example.
+spec: integration-standard-kit/spec-kit/grpc-service.schema.yaml
+canonicalExample: integration-standard-kit/examples/grpc-service-example.md
+
+blockingChecks:
+  - id: GRPC-GATE-001
+    check: service_and_method_present
+    description: gRPC service name and method name are documented.
+  - id: GRPC-GATE-002
+    check: general_info_complete
+    description: General info includes package, service, method, RPC type and integration boundary.
+  - id: GRPC-GATE-003
+    check: request_metadata_documented
+    description: Request metadata table has metadata key, required flag, description and example.
+  - id: GRPC-GATE-004
+    check: response_metadata_documented
+    description: Response/trailing metadata table is documented separately from request metadata.
+  - id: GRPC-GATE-005
+    check: proto_definition_present
+    description: Proto definition includes syntax, package, service, rpc, messages and enums when present.
+  - id: GRPC-GATE-006
+    check: request_parameters_documented
+    description: Request parameter table includes type, required flag, description, validation, default and example.
+  - id: GRPC-GATE-007
+    check: response_parameters_documented
+    description: Response parameter table includes type, required flag, description, validation, default, example and mapping.
+  - id: GRPC-GATE-008
+    check: conditional_requiredness_documented
+    description: Conditional fields such as cursor have a separate condition table.
+  - id: GRPC-GATE-009
+    check: enum_sections_documented
+    description: Enum values include numeric code and description.
+  - id: GRPC-GATE-010
+    check: json_schemas_present
+    description: JSON Schema request and response are present when canonical format requires them.
+  - id: GRPC-GATE-011
+    check: statuses_documented
+    description: gRPC status codes and error conditions are documented.
+  - id: GRPC-GATE-012
+    check: examples_and_boundary_present
+    description: Happy path and boundary/empty-result examples are present.
+
+warningChecks:
+  - id: GRPC-WARN-001
+    check: field_numbers_missing
+    description: Some message fields lack field numbers.
+  - id: GRPC-WARN-002
+    check: versioning_unclear
+    description: Package version or versioning rule is unclear.
+  - id: GRPC-WARN-003
+    check: nested_messages_not_expanded
+    description: Nested messages such as Timestamp, MoneyValue or domain messages are not expanded.
+  - id: GRPC-WARN-004
+    check: metadata_mixed_with_proto
+    description: Metadata is mixed into protobuf body instead of being described separately.

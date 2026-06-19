@@ -1,0 +1,131 @@
+artifact: soap-operation
+description: Contract for SOAP operation documentation.
+language: ru
+
+canonicalExample: integration-standard-kit/examples/soap-operation-example.md
+sourceStandardSection: "4.5 SOAP API; 4.6 Синхронные интеграции; 4.8 Документирование API; 4.9 Примеры"
+
+requiredSections:
+  - SOAP операция
+  - Общая информация
+  - HTTP заголовки транспортного уровня
+  - SOAP Header элементы
+  - Response Headers
+  - XSD Schema
+  - Параметры запроса
+  - Условия обязательности
+  - Параметры ответа
+  - Пример запроса и ответа
+  - Пограничный случай
+  - SOAP Fault коды ошибок
+
+generalInfoTable:
+  columns:
+    - Параметр
+    - Значение
+  requiredRows:
+    - Назначение
+    - Система-источник
+    - Система-получатель
+    - Тип интеграции
+    - Протокол
+    - Направление
+    - WSDL
+    - Endpoint
+    - Namespace
+    - SOAPAction
+    - Аутентификация
+  conditionalRows:
+    - Timeout
+    - Retry Policy
+
+wsdlRequiredElements:
+  - types
+  - message
+  - portType
+  - binding
+  - service
+
+soapMessageElements:
+  - Envelope
+  - Body
+
+soapOptionalElements:
+  - Header
+  - Fault
+
+httpHeaderColumns:
+  - Заголовок
+  - Обязат.
+  - Описание
+  - Пример
+
+soapHeaderColumns:
+  - Элемент
+  - Обязат.
+  - Описание
+  - Пример
+
+responseHeaderColumns:
+  - Заголовок
+  - Описание
+  - Пример
+
+xsdParameterColumns:
+  - Параметр
+  - Тип XSD
+  - minOccurs
+  - maxOccurs
+  - Описание
+  - Ограничения
+  - Пример
+
+requestParameterColumns:
+  - Параметр
+  - Тип XSD
+  - Обязат.
+  - Описание
+  - Валидация
+  - По умолч.
+  - Пример
+
+responseParameterColumns:
+  - Параметр
+  - Тип XSD
+  - Обязат.
+  - Описание
+  - Валидация
+  - По умолч.
+  - Пример
+  - Маппинг
+
+conditionalRequiredColumns:
+  - Параметр
+  - Условие обязательности
+
+faultColumns:
+  - faultcode
+  - errorCode
+  - Описание
+
+standardFaultCodes:
+  - soap:Client
+  - soap:Server
+  - soap:MustUnderstand
+  - soap:VersionMismatch
+
+securityMethods:
+  - UsernameToken
+  - X.509 Certificate
+  - SAML Token
+
+qualityRules:
+  - SOAP Header and HTTP headers are documented separately.
+  - XSD complexType nested structure is described for request and response.
+  - Enumeration values include descriptions.
+  - SOAP Fault structure is documented with `faultcode`, `faultstring` and `detail`.
+  - WSDL URL and endpoint are included only when confirmed by evidence.
+  - Response headers section explains that business errors are represented through SOAP Body or SOAP Fault.
+  - Empty collection response is documented when response may contain repeated elements.
+  - `minOccurs`, `maxOccurs`, restrictions and enum values are preserved from XSD evidence.
+  - WS-Security method is documented separately from HTTP authentication.

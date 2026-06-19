@@ -1,0 +1,155 @@
+artifact: grpc-service
+description: Contract for gRPC service documentation.
+language: ru
+
+canonicalExample: integration-standard-kit/examples/grpc-service-example.md
+sourceStandardSection: "4.3 gRPC API; 4.6 Синхронные интеграции; 4.8 Документирование API; 4.9 Примеры"
+
+requiredSections:
+  - gRPC сервис и метод
+  - Общая информация
+  - Request Metadata
+  - Response Metadata
+  - Proto Definition
+  - Параметры запроса
+  - Условия обязательности
+  - Enum sections
+  - Параметры ответа
+  - JSON Schema запроса
+  - JSON Schema ответа
+  - Пример запроса и ответа
+  - Пограничный случай
+  - gRPC коды ошибок
+
+generalInfoTable:
+  columns:
+    - Параметр
+    - Значение
+  requiredRows:
+    - Назначение
+    - Система-источник
+    - Система-получатель
+    - Тип интеграции
+    - Протокол
+    - Направление
+    - Package
+    - Service
+    - Метод
+    - Тип RPC
+  conditionalRows:
+    - SLA
+    - Timeout
+    - Retry Policy
+
+protoRequiredElements:
+  - syntax
+  - package
+  - service
+  - rpc
+  - message
+
+protoOptionalElements:
+  - import
+  - enum
+  - comments
+
+rpcTypes:
+  - Unary
+  - Server Streaming
+  - Client Streaming
+  - Bidirectional Streaming
+
+requestParameterColumns:
+  - Параметр
+  - Тип
+  - Обязат.
+  - Описание
+  - Валидация
+  - По умолч.
+  - Пример
+
+responseParameterColumns:
+  - Параметр
+  - Тип
+  - Обязат.
+  - Описание
+  - Валидация
+  - По умолч.
+  - Пример
+  - Маппинг
+
+messageFieldColumns:
+  - Параметр
+  - Тип
+  - Номер поля
+  - Обязательность
+  - Описание
+  - Валидация
+  - Пример
+
+requestMetadataColumns:
+  - Metadata key
+  - Обязат.
+  - Описание
+  - Пример
+
+responseMetadataColumns:
+  - Metadata key
+  - Описание
+  - Пример
+
+conditionalRequiredColumns:
+  - Параметр
+  - Условие обязательности
+
+enumColumns:
+  - Значение
+  - Код
+  - Описание
+
+statusColumns:
+  - gRPC код
+  - Название
+  - Использование
+  - Условие
+
+standardStatuses:
+  - OK
+  - CANCELLED
+  - UNKNOWN
+  - INVALID_ARGUMENT
+  - NOT_FOUND
+  - PERMISSION_DENIED
+  - INTERNAL
+  - UNAVAILABLE
+  - UNAUTHENTICATED
+
+jsonSchemaRequirements:
+  requestSchemaRequired: true
+  responseSchemaRequired: true
+  requiredElements:
+    - $schema
+    - title
+    - type
+    - required
+    - properties
+  protobufMappingRules:
+    Timestamp: object with seconds and nanos
+    repeated: array with minItems/maxItems when known
+    enum: integer enum values or string enum names, according to source representation
+
+exampleRequirements:
+  - Request example.
+  - Response example.
+  - Empty result or boundary case for collection response.
+  - gRPC error/status table.
+
+qualityRules:
+  - Package должен отражать версию API, если версия подтверждена источником.
+  - Номер поля должен быть уникальным внутри message.
+  - Enum должен иметь значение по умолчанию с нулевым номером, если это подтвержденный proto contract.
+  - Не восстанавливать поля messages из названий DTO без proto/code evidence.
+  - Metadata описывать отдельно от protobuf messages.
+  - Response metadata / trailing metadata описывать отдельно от request metadata.
+  - Для cursor-based pagination указывать условие обязательности cursor.
+  - Для MoneyValue/Timestamp и других вложенных messages раскрывать вложенную структуру.

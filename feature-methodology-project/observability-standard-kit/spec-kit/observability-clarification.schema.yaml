@@ -1,0 +1,67 @@
+artifact: observability-clarification
+description: Mandatory clarification before logging/metrics artifacts.
+language: ru
+parentSpec: observability-standard-kit/spec-kit/observability-page.schema.yaml
+
+clarificationPolicy:
+  mode: clarification-first
+  defaultFirstResponse: questions-only
+  questionnaireTemplate: observability-standard-kit/templates/observability-clarification-questionnaire.template.md
+  outputClarificationPath: "08-Observability/<feature-slug>-clarification.md"
+  agentHardStop:
+    untilUserResponds: true
+    forbiddenBeforeClarification:
+      - write logging artifact to 08-Observability
+      - write metrics artifact to 08-Observability
+      - present eventType or Prometheus names as confirmed facts without user answer or mode B in same turn
+    allowedFirstResponse:
+      - clarification questionnaire only
+      - context from postanovka in read-only block without filling user answers
+    proceedToArtifactsWhen:
+      - user submitted filled clarification file or inline answers
+      - user explicitly chose mode B in current message
+      - user said regenerate from questionnaire after filling
+  mandatoryAnswerOptions:
+    - id: A
+      label: Пришлю контракты, существующие логи/дашборды, naming convention
+      behavior: wait-for-evidence
+    - id: B
+      label: Спроектируй с нуля (DESIGN-OBS-*)
+      behavior: authorize-greenfield-design
+    - id: C
+      label: Частично знаю + GAP-OBS
+      behavior: partial-evidence-only
+    - id: D
+      label: Только GAP-OBS без выдуманных eventType/метрик
+      behavior: gap-only
+
+mandatoryQuestionCatalog:
+  logging:
+    - id: LOG-Q-001
+      topic: journals_and_events
+      question: Список интеграций и бизнес-событий; тип журнала (интеграционный/системный/бизнес)?
+    - id: LOG-Q-002
+      topic: eventType_codes
+      question: Соглашение по eventType (CREATE_X, SEND_X_RESULT)?
+    - id: LOG-Q-003
+      topic: rqStr_rsStr
+      question: Логировать rqStr/rsStr AS IS? Маскирование PII?
+    - id: LOG-Q-004
+      topic: trace_ids
+      question: callid / traceId / requestId — что сквозное?
+  metrics:
+    - id: METR-Q-001
+      topic: service_prefix
+      question: Префикс Prometheus-метрик (<service>)?
+    - id: METR-Q-002
+      topic: technical_labels
+      question: method, endpoint, status — полный список endpoint?
+    - id: METR-Q-003
+      topic: error_metrics
+      question: Какие типы ошибок считать (integration, timeout, retry, partial)?
+    - id: METR-Q-004
+      topic: business_kpi
+      question: Бизнес-метрики и формулы?
+    - id: METR-Q-005
+      topic: frontend_events
+      question: Список UI-событий и параметров (Event_duration интервалы)?

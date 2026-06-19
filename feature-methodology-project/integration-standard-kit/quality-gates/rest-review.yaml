@@ -1,0 +1,50 @@
+gate: rest-review
+description: REST-specific quality gate aligned with canonical REST example.
+spec: integration-standard-kit/spec-kit/rest-api.schema.yaml
+canonicalExample: integration-standard-kit/examples/rest-integration-example.md
+
+blockingChecks:
+  - id: REST-GATE-001
+    check: method_and_path_present
+    description: HTTP method and endpoint path are documented in an endpoint signature block.
+  - id: REST-GATE-002
+    check: general_info_complete
+    description: `Общая информация` table contains required rows from rest-api.schema.yaml.
+  - id: REST-GATE-003
+    check: request_headers_documented
+    description: Request Headers table has columns `Заголовок | Обязат. | Описание | Пример`.
+  - id: REST-GATE-004
+    check: response_headers_documented
+    description: Response Headers table has columns `Заголовок | Описание | Пример`.
+  - id: REST-GATE-005
+    check: path_and_query_parameters_documented
+    description: Path and query parameter tables use required columns, including validation and examples.
+  - id: REST-GATE-006
+    check: response_body_documented
+    description: Response Body 200 OK table uses canonical columns, including nullable, default, example and mapping.
+  - id: REST-GATE-007
+    check: enum_sections_documented
+    description: Enum fields have value-description tables when enums are present.
+  - id: REST-GATE-008
+    check: status_codes_documented
+    description: Error table includes HTTP code, machine-readable error code and description.
+  - id: REST-GATE-009
+    check: examples_present
+    description: Happy path request/response and boundary empty-result example are present when endpoint returns collection.
+  - id: REST-GATE-010
+    check: empty_result_behavior_documented
+    description: Empty result behavior states whether arrays are empty or null and how pagination behaves.
+
+warningChecks:
+  - id: REST-WARN-001
+    check: openapi_missing
+    description: OpenAPI/Swagger reference is missing.
+  - id: REST-WARN-002
+    check: json_schema_missing
+    description: JSON Schema is missing when the endpoint has request/response body schema.
+  - id: REST-WARN-003
+    check: conditional_required_parameters_missing
+    description: Conditional required parameters do not have a separate condition table.
+  - id: REST-WARN-004
+    check: examples_not_realistic
+    description: Examples do not use realistic UUIDs, dates, enum values and domain values.

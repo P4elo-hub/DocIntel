@@ -1,0 +1,20 @@
+gate: security-review
+description: Security NFR quality gate (no canonical example in source standard section 7).
+spec: nfr-standard-kit/spec-kit/security.schema.yaml
+canonicalExample: null
+
+blockingChecks:
+  - id: SEC-GATE-001
+    check: security_requirements_section
+    description: Artifact documents authentication/authorization or explicit gap in working layer for non-sensitive features.
+  - id: SEC-GATE-002
+    check: sensitive_data_table
+    description: Sensitive data table lists fields, protection (encryption/masking) and display rules when PII/financial data exists.
+  - id: SEC-GATE-003
+    check: no_secrets_in_examples
+    description: Examples do not contain real passwords, tokens or private keys.
+
+warningChecks:
+  - id: SEC-WARN-001
+    check: audit_logging_missing
+    description: Security-sensitive operations without audit/logging rules.

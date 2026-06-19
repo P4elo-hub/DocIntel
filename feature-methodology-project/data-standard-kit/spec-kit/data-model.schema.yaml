@@ -1,0 +1,178 @@
+artifact: data-model
+description: Contract for a data model artifact aligned with section 5.1 of the canonical standard.
+language: ru
+
+canonicalExample: data-standard-kit/examples/payment-processing-data-model-example.md
+
+requiredSections:
+  - Контекст изменения
+  - ER-диаграмма
+  - Новые и изменённые сущности
+  - Связи между сущностями
+  - Область изменения
+  - Gaps и допущения
+
+optionalSections:
+  - Сводные таблицы (junction)
+
+headingFormat:
+  documentTitle:
+    pattern: "^#### Модель данных — .+$"
+  sectionTitle:
+    pattern: "^\\*\\*.+:\\*\\*$"
+
+contextTable:
+  title: Контекст изменения
+  columns:
+    - Элемент
+    - Значение
+  requiredRows:
+    - Фича / изменение
+    - Тип хранилища
+    - СУБД / движок
+    - Тип изменения
+    - Связанные артефакты
+
+erDiagram:
+  requiredWhenStorageStructureChanges: true
+  format: plantuml
+  startMarker: "@startuml"
+  endMarker: "@enduml"
+  entityNotation: required
+  showCardinalities: required
+  highlightNewEntities: recommended
+
+entityAttributeTable:
+  requiredFor:
+    - newEntities
+    - changedEntities
+  columns:
+    - Атрибут
+    - Тип
+    - Nullable
+    - Описание
+    - Ограничения
+  perEntityHeadingPattern: "^\\*\\*Таблица: .+\\*\\*$|^\\*\\*Коллекция: .+\\*\\*$"
+
+relationshipsTable:
+  title: Связи между сущностями
+  columns:
+    - Сущность 1
+    - Сущность 2
+    - Тип связи
+    - FK / Reference
+    - Описание
+  allowedCardinalities:
+    - "1:1"
+    - "1:N"
+    - "N:1"
+  forbiddenCardinalities:
+    - "N:M"
+    - "M:N"
+
+junctionPolicy:
+  rule: Many-to-many business relationships must be decomposed through a junction entity/table.
+  pattern: "EntityA 1:N Junction N:1 EntityB"
+  junctionSectionTitle: Сводные таблицы (junction)
+  minimumFields:
+    - primaryKey
+    - referenceToEntityA
+    - referenceToEntityB
+  optionalFields:
+    - relationshipAttributes
+
+impactScopeTable:
+  title: Область изменения
+  columns:
+    - Категория
+    - Элементы
+  recommendedRows:
+    - Новые сущности
+    - Изменённые сущности
+    - Удалённые / deprecated сущности
+    - Затронутые связи
+    - Индексы и ограничения
+
+gapsAndAssumptions:
+  title: Gaps и допущения
+  columns:
+    - ID
+    - Где найдено
+    - Что неизвестно / что предположено
+    - Как закрыть / подтвердить
+  gapIdPattern: "GAP-DATA-[0-9]{3}"
+  assumptionIdPattern: "ASM-DATA-[0-9]{3}"
+  designIdPattern: "DESIGN-DATA-[0-9]{3}"
+  emptyStateText: Gaps не выявлены
+
+clarificationPolicy:
+  mode: clarification-first
+  defaultFirstResponse: questions-only
+  draftWithoutClarificationAllowedWhen:
+    - user explicitly requests draft
+    - user explicitly chooses greenfield design
+    - user attaches schema evidence
+  mandatoryAnswerOptions:
+    - id: A
+      label: Пришлю контекст — DDL, ER, ORM, API contract, requirements
+      behavior: wait-for-evidence
+    - id: B
+      label: Спроектируй сам с нуля — наименуй поля, типы, ограничения
+      behavior: authorize-greenfield-design
+      marksWith: DESIGN-DATA
+    - id: C
+      label: Частично знаю — опишу в тексте, остальное GAP/ASM
+      behavior: partial-evidence-only
+    - id: D
+      label: Пока не знаю — GAP-DATA без выдуманных полей
+      behavior: gap-only
+  forbiddenWithoutClarification:
+    - copying canonical example attribute tables into final artifact
+    - inventing enum/check/index lists without evidence or DESIGN-DATA authorization
+  preferStructuredQuestions: true
+
+storageTypes:
+  relational:
+    entityTerm: таблица
+    attributeTerm: атрибут / колонка
+    relationshipTerm: FK
+  document:
+    entityTerm: коллекция
+    attributeTerm: поле
+    relationshipTerm: reference / embedded document
+  graph:
+    entityTerm: node label
+    attributeTerm: property
+    relationshipTerm: relationship type
+
+reusePolicy:
+  usedBy:
+    - feature-standard-kit
+    - requirements-standard-kit
+    - use-case-standard-kit
+  rule: If a feature changes persistent storage structure, apply data-standard-kit instead of duplicating entity/relationship rules locally.
+
+forbiddenInPermanentPage:
+  - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+  - "TODO"
+  - "TRACE-"
+  - "OQ-"
+  - "CONFLICT-"
+  - "Evidence / Traceability"
+  - "СТД-"
+  - "N:M"
+  - "M:N"
+
+qualityRules:
+  - Заголовок документа соответствует формату `#### Модель данных — <название>`.
+  - ER-диаграмма присутствует, если меняется структура хранилища.
+  - Каждая новая или изменённая сущность имеет таблицу атрибутов с колонками Атрибут, Тип, Nullable, Описание, Ограничения.
+  - Все значимые связи отражены в таблице связей с указанием FK/reference.
+  - Связи N:M не описываются напрямую; используется junction-сущность.
+  - Junction-сущность содержит PK и ссылки на обе стороны связи.
+  - Область изменения явно перечисляет новые, изменённые и затронутые элементы модели.
+  - Неизвестные обязательные данные маркируются GAP-DATA-* и имеют строку в Gaps и допущения.
+  - Слабые предположения маркируются ASM-DATA-* и имеют строку в Gaps и допущения.
+  - Greenfield design после явного выбора пользователя маркируется DESIGN-DATA-*.
+  - Финальный артефакт не создаётся без clarification pass, кроме draft / evidence / greenfield authorization.
+  - Финальный артефакт не содержит DDL/DML migration scripts.

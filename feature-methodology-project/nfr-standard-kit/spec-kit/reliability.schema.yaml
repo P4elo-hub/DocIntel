@@ -1,0 +1,34 @@
+artifact: reliability
+description: Contract for reliability NFR documentation.
+language: ru
+canonicalExample: nfr-standard-kit/examples/account-transfer-reliability-example.md
+sourceStandardSection: "7.2 Надежность"
+clarificationPolicyRef: nfr-standard-kit/spec-kit/nfr-clarification.schema.yaml
+clarificationBeforeFinalArtifact:
+  mandatory: true
+  mustAskExplicitly:
+    - slo_metrics
+    - dependency_failure
+
+documentTitle:
+  pattern: "^#### NFR — .+ \\(Надёжность\\)$"
+
+requiredSections:
+  - SLA/SLO
+  - Graceful Degradation
+
+sloTable:
+  columns:
+    - Метрика
+    - SLO
+    - Описание
+  typicalMetrics:
+    - Availability
+    - Error rate
+    - Latency p85
+
+gracefulDegradationTable:
+  columns:
+    - Зависимость
+    - Поведение при отказе
+    - Fallback

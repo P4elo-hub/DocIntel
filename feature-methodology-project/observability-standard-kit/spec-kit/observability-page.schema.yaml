@@ -1,0 +1,53 @@
+artifact: observability-page
+description: Umbrella contract for logging and metrics of a feature.
+language: ru
+sourceStandardSection: "8. Стандарты логирования и мониторинга"
+
+domains:
+  - id: logging
+    label: Логирование
+    spec: observability-standard-kit/spec-kit/logging.schema.yaml
+    template: observability-standard-kit/templates/logging.template.md
+    canonicalExample: observability-standard-kit/examples/account-transfer-logging-example.md
+    qualityGate: observability-standard-kit/quality-gates/logging-review.yaml
+  - id: metrics
+    label: Метрики
+    spec: observability-standard-kit/spec-kit/metrics.schema.yaml
+    template: observability-standard-kit/templates/metrics.template.md
+    canonicalExample: observability-standard-kit/examples/account-transfer-metrics-example.md
+    qualityGate: observability-standard-kit/quality-gates/metrics-review.yaml
+
+documentTitle:
+  logging:
+    pattern: "^#### Логирование — .+$"
+  metrics:
+    pattern: "^#### Метрики — .+$"
+  forbiddenInTitle:
+    - "Пример:"
+    - "СТД-"
+
+clarificationPolicyRef: observability-standard-kit/spec-kit/observability-clarification.schema.yaml
+
+clarificationPolicy:
+  mode: clarification-first
+  summary: >
+    Агент сначала выдаёт опросник (и файл *-clarification.md), пользователь заполняет ответы,
+    затем пишутся logging.md / metrics.md. Без ответов — только GAP/DESIGN после явного режима B.
+
+outputRules:
+  - Do not expose СТД-* in final reader-facing artifacts.
+  - Do not invent eventType, metric names, labels or log fields without evidence or DESIGN-OBS-*.
+  - Canonical examples are authoritative for style; copy event/metric rows from example only for matching feature context.
+
+inlineTraceability:
+  required: true
+  gapIdPattern: "GAP-OBS-[0-9]{3}"
+  designIdPattern: "DESIGN-OBS-[0-9]{3}"
+  gapsSectionTitle: Gaps и допущения
+  gapsColumns:
+    - ID
+    - Тип
+    - Где в документе
+    - Что предположено / не уточнялось
+    - Подтверждено?
+    - Как закрыть

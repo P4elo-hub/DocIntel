@@ -1,0 +1,20 @@
+gate: reliability-review
+description: Reliability NFR quality gate aligned with canonical transfer example.
+spec: nfr-standard-kit/spec-kit/reliability.schema.yaml
+canonicalExample: nfr-standard-kit/examples/account-transfer-reliability-example.md
+
+blockingChecks:
+  - id: REL-GATE-001
+    check: slo_table_present
+    description: SLA/SLO table documents availability, error rate and latency (or justified subset with GAP in working layer).
+  - id: REL-GATE-002
+    check: graceful_degradation_table
+    description: Graceful degradation table lists dependency, failure behavior and fallback.
+  - id: REL-GATE-003
+    check: critical_dependencies_covered
+    description: Each critical external dependency mentioned in feature scope has a degradation row or explicit gap.
+
+warningChecks:
+  - id: REL-WARN-001
+    check: slo_without_measurement_window
+    description: SLO stated without error budget or measurement context.

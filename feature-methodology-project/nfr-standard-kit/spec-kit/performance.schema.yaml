@@ -1,0 +1,159 @@
+artifact: performance
+description: Contract for performance NFR documentation.
+language: ru
+canonicalExample: nfr-standard-kit/examples/account-transfer-performance-example.md
+sourceStandardSection: "7.1 Производительность; 7.1.1–7.1.7"
+clarificationPolicyRef: nfr-standard-kit/spec-kit/nfr-clarification.schema.yaml
+
+clarificationBeforeFinalArtifact:
+  mandatory: true
+  mustAskExplicitly:
+    - latency_percentile_and_target
+    - throughput_and_peak
+    - rate_limit
+    - throttling
+    - circuit_breaker
+    - ccu_and_overload
+  conditionalMustAsk:
+    - business_transaction_sla
+    - web_vitals
+    - database_performance
+    - caching
+    - bulkhead_backpressure
+  rule: >
+    Нельзя заполнять таблицы 7.1.1–7.1.7 числами, пока соответствующие темы
+    из mandatoryQuestionCatalog не закрыты ответом пользователя, evidence,
+    DESIGN-NFR-* или GAP-NFR-* в рабочем слое.
+
+documentTitle:
+  pattern: "^#### NFR — .+ \\(Производительность\\)$"
+
+requiredSections:
+  - Время отклика
+  - Пропускная способность
+  - Время обработки транзакций
+  - Время загрузки страниц
+  - Одновременные пользователи
+  - Производительность БД
+  - Кэширование
+
+responseTime:
+  endpointTable:
+    columns:
+      - Endpoint / Операция
+      - p85
+      - Условия измерения
+      - Критичность
+  classificationTable:
+    columns:
+      - Endpoint
+      - Категория
+
+throughput:
+  endpointTable:
+    columns:
+      - Endpoint / Очередь
+      - Штатная (RPS)
+      - Пиковая (RPS)
+      - Множитель
+      - Продолжительность пика
+  loadProfileTable:
+    columns:
+      - Параметр
+      - Значение
+    requiredRows:
+      - Средний RPS (штатный режим)
+      - Пиковый RPS
+      - Время пиковой нагрузки
+
+transactionTime:
+  businessTransactionTable:
+    columns:
+      - Транзакция
+      - SLA (85-й перцентиль)
+      - Включает (ожидаемое время шага)
+      - Таймаут клиента / HTTP
+  distributedTransactionTable:
+    columns:
+      - Шаг
+      - Сервис
+      - Ожидаемое время
+      - Step Timeout (макс.)
+      - Компенсация
+  notes:
+    - SLA vs client timeout relationship
+    - Global timeout vs step timeouts
+    - Compensation on step timeout
+
+pageLoad:
+  webVitalsTable:
+    columns:
+      - Экран
+      - LCP
+      - FID
+      - CLS
+      - TTI
+  loadingStrategyTable:
+    columns:
+      - Элемент
+      - Стратегия
+      - Обоснование
+
+concurrency:
+  ccuTable:
+    columns:
+      - Параметр
+      - Значение
+    requiredRows:
+      - Максимум CCU
+      - Максимум сессий на пользователя
+      - Штатное количество активных
+      - Поведение при превышении лимита
+  loadManagementTable:
+    columns:
+      - Механизм
+      - Описание
+      - Параметры
+      - Применение
+
+databasePerformance:
+  queryTable:
+    columns:
+      - Запрос / Операция
+      - Тип
+      - Макс. время
+      - Объём данных
+      - Требуемые индексы
+  connectionPoolTable:
+    columns:
+      - Параметр
+      - Значение
+      - Обоснование
+
+caching:
+  resourceTable:
+    columns:
+      - Ресурс / Ключ кэша
+      - Уровень
+      - TTL
+      - Инвалидация
+      - Макс. размер
+      - При промахе
+
+classificationReference:
+  responseTimeCategories:
+    - Мгновенные (interactive) — p95 < 100 ms
+    - Быстрые (fast) — p95 < 500 ms
+    - Стандартные (normal) — p95 < 2 с
+    - Длительные (background) — p95 < 30 с
+  cacheLevels:
+    - L1 — In-process
+    - L2 — Distributed
+    - L3 — CDN
+    - L4 — Browser
+  invalidationStrategies:
+    - TTL-based
+    - Event-driven
+    - Write-through
+    - Write-behind
+    - Cache-aside

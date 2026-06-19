@@ -1,0 +1,90 @@
+artifact: state-diagram
+description: Contract for UML State Diagram documentation.
+language: ru
+
+canonicalExample: uml-diagram-standard-kit/examples/state-diagram-example.md
+sourceStandardSection: "2.4.3 Требования к State Diagram"
+
+requiredSections:
+  - Диаграмма
+  - Назначение
+  - Состояния и переходы
+  - PlantUML
+  - Легенда
+  - Соответствие тексту
+  - Gaps и допущения
+
+requiredPlantUmlElements:
+  - "@startuml"
+  - title
+  - caption
+  - initial_state
+  - states
+  - transitions
+  - final_state
+  - legend
+  - "@enduml"
+
+stateElements:
+  initial:
+    plantUml: "[*] --> State"
+    required: true
+  final:
+    plantUml: "State --> [*]"
+    required: true
+  state:
+    required: true
+  transition:
+    required: true
+  guard:
+    syntax: "[condition]"
+    requiredWhen: transition_is_conditional
+  eventAction:
+    syntax: "event [guard] / action"
+
+transitionFormat:
+  pattern: "event [guard] / action"
+  examples:
+    - "submit [isValid] / sendNotification"
+    - "timeout / cancelOrder"
+  allowEventOnlyWhenActionUnknown: true
+
+stateActions:
+  recommendedForEachState:
+    - "entry/"
+    - "exit/"
+    - "do/"
+  requiredWhenKnown: true
+
+advancedElements:
+  nestedStates:
+    allowed: true
+    requiredWhen: lifecycle_has_subprocess
+  parallelRegions:
+    allowed: true
+    requiredWhen: object_has_independent_state_dimensions
+  notes:
+    allowed: true
+    useFor:
+      - explaining_nested_state
+      - explaining_parallel_regions
+      - explaining_retry_or_backoff_when_evidenced
+
+traceabilityTable:
+  columns:
+    - Элемент на диаграмме
+    - Номер
+    - Описание в тексте
+
+forbiddenInFinalArtifact:
+  - TODO
+  - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+  - "СТД-"
+
+qualityRules:
+  - Диаграмма имеет начальное и конечное состояние.
+  - Все состояния соответствуют подтвержденному жизненному циклу объекта.
+  - Переходы подписаны событием, guard и действием, если они известны.
+  - Условные переходы имеют guard в квадратных скобках.
+  - Для состояний указаны entry/exit/do actions, если они известны.
+  - Вложенные состояния и параллельные регионы используются только при подтвержденной необходимости.

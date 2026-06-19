@@ -1,0 +1,154 @@
+artifact: requirements-analysis
+description: Contract for a feature requirements analysis artifact.
+language: ru
+
+canonicalExample: requirements-standard-kit/examples/operation-history-requirements-example.md
+
+requiredSections:
+  - Источник требования
+  - Стейкхолдеры
+  - Бизнес-правила и ограничения
+  - Цель фичи
+  - SMART-проверка цели
+  - Противоречия и решения
+  - Gaps и допущения
+
+headingFormat:
+  documentTitle:
+    pattern: "^#### Анализ требований — .+$"
+  sectionTitle:
+    pattern: "^\\*\\*.+:\\*\\*$"
+
+requiredTables:
+  source:
+    title: Источник требования
+    columns:
+      - Параметр
+      - Значение
+    requiredRows:
+      - Фича
+      - Источник
+      - Инициатор
+      - Дата / версия
+  stakeholders:
+    title: Стейкхолдеры
+    columns:
+      - Стейкхолдер
+      - Роль
+      - Интерес / ожидание
+      - Влияние / ответственность
+  businessRulesAndConstraints:
+    title: Бизнес-правила и ограничения
+    columns:
+      - ID
+      - Тип
+      - Описание
+      - Источник / обоснование
+  goal:
+    title: Цель фичи
+    columns:
+      - Вопрос
+      - Ответ
+    requiredRows:
+      - Какую бизнес-проблему решает?
+      - Какую ценность приносит пользователю?
+      - Какие метрики улучшает?
+  smart:
+    title: SMART-проверка цели
+    columns:
+      - Критерий
+      - Описание
+      - Значение
+    requiredRows:
+      - Specific
+      - Measurable
+      - Achievable
+      - Relevant
+      - Time-bound
+  contradictions:
+    title: Противоречия и решения
+    columns:
+      - Требование 1
+      - Требование 2
+      - Источник 1
+      - Источник 2
+      - Решение
+      - Обоснование
+  gapsAndAssumptions:
+    title: Gaps и допущения
+    columns:
+      - ID
+      - Тип
+      - Где обнаружено
+      - Что не хватает / что предполагается
+      - Как закрыть
+    requiredRowsWhenUnknownsExist: true
+
+allowedSourceTypes:
+  - Интервью
+  - Документ
+  - Jira
+  - Product request
+  - Support request
+  - Incident
+  - Analytics
+  - Regulation
+  - Architecture decision
+  - Unknown
+
+businessItemTypes:
+  - Бизнес-правило
+  - Ограничение
+  - Допущение
+  - Зависимость
+
+smartCriteria:
+  - Specific
+  - Measurable
+  - Achievable
+  - Relevant
+  - Time-bound
+
+contradictionPolicy:
+  ifNone:
+    requiredValue: Противоречия не выявлены
+  ifPresent:
+    decisionRequired: true
+    rationaleRequired: true
+    escalationTarget: Product Owner
+
+gapPolicy:
+  gapIdPattern: "^GAP-REQ-[0-9]{3}$"
+  assumptionIdPattern: "^ASM-REQ-[0-9]{3}$"
+  allowedTypes:
+    - Gap
+    - Assumption
+  rules:
+    - If a required field is unknown, write a precise `GAP-REQ-NNN` marker in that field and add the same ID to `Gaps и допущения`.
+    - If the agent infers a value from weak evidence, write an `ASM-REQ-NNN` marker near the inferred value and add the same ID to `Gaps и допущения`.
+    - If a business concept is normalized into an exact technical identifier not provided by the user, mark the identifier with `ASM-REQ-NNN`.
+    - Exact technical identifiers include field names, status codes, enum values, metric names, endpoint names, event names, source names and entity names.
+    - Prefer business wording when exact technical identifiers are unknown.
+    - Do not use vague phrases like `требует уточнения` without a linked GAP ID.
+    - If there are no gaps or assumptions, add one row with `Gaps не выявлены`.
+
+forbiddenInPermanentPage:
+  - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+  - "TODO"
+  - "TRACE-"
+  - "OQ-"
+  - "CONFLICT-"
+  - "Evidence / Traceability"
+  - "СТД-"
+
+qualityRules:
+  - Источник требования указан явно или вынесен в вопросы/gaps вне финального артефакта.
+  - Стейкхолдеры перечислены с ролью, интересом и ответственностью.
+  - Бизнес-правила и ограничения выделены отдельно от цели.
+  - Цель отвечает на бизнес-проблему, пользовательскую ценность и метрики.
+  - SMART-проверка содержит все пять критериев.
+  - Противоречия либо задокументированы с решением и обоснованием, либо явно указано, что они не выявлены.
+  - Все неизвестные значения имеют точный `GAP-REQ-*` ID и строку в секции `Gaps и допущения`.
+  - Все слабые предположения имеют `ASM-REQ-*` ID и строку в секции `Gaps и допущения`.
+  - Все не подтвержденные технические идентификаторы имеют `ASM-REQ-*` ID и строку в секции `Gaps и допущения`.
+  - Финальный артефакт не содержит unresolved markers и source standard IDs.

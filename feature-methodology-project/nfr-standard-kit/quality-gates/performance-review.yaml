@@ -1,0 +1,43 @@
+gate: performance-review
+description: Performance NFR quality gate aligned with canonical transfer example.
+spec: nfr-standard-kit/spec-kit/performance.schema.yaml
+canonicalExample: nfr-standard-kit/examples/account-transfer-performance-example.md
+
+blockingChecks:
+  - id: PERF-GATE-001
+    check: all_subsections_present
+    description: Performance artifact contains sections 7.1.1 through 7.1.7 when feature has API/UI/DB/cache scope.
+    requiredSections:
+      - 7.1.1. ВРЕМЯ ОТКЛИКА
+      - 7.1.2. ПРОПУСКНАЯ СПОСОБНОСТЬ
+      - 7.1.3. ВРЕМЯ ОБРАБОТКИ ТРАНЗАКЦИЙ
+      - 7.1.4. ВРЕМЯ ЗАГРУЗКИ СТРАНИЦ
+      - 7.1.5. ОДНОВРЕМЕННЫЕ ПОЛЬЗОВАТЕЛИ
+      - 7.1.6. ПРОИЗВОДИТЕЛЬНОСТЬ БД
+      - 7.1.7. КЭШИРОВАНИЕ
+  - id: PERF-GATE-002
+    check: response_time_table
+    description: Response time table has Endpoint, p85, measurement conditions and criticality.
+  - id: PERF-GATE-003
+    check: throughput_and_load_profile
+    description: Throughput table and load profile table are present for in-scope endpoints/queues.
+  - id: PERF-GATE-004
+    check: transaction_sla_and_saga
+    description: Business transactions document SLA, client timeout; distributed flows document step timeouts and global timeout.
+  - id: PERF-GATE-005
+    check: web_vitals_and_loading
+    description: UI screens document LCP, FID, CLS, TTI and loading strategy table when UI exists.
+  - id: PERF-GATE-006
+    check: ccu_and_load_management
+    description: CCU table and load management mechanisms are documented.
+  - id: PERF-GATE-007
+    check: db_and_cache_tables
+    description: DB query SLA with indexes and cache resource table are documented when persistence/cache used.
+
+warningChecks:
+  - id: PERF-WARN-001
+    check: client_timeout_less_than_sla
+    description: Client HTTP timeout should exceed transaction SLA where both are documented.
+  - id: PERF-WARN-002
+    check: section_order_differs
+    description: Section order differs from canonical example.

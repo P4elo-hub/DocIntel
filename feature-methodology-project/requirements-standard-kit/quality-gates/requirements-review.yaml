@@ -1,0 +1,171 @@
+gate: requirements-review
+description: Quality gate for requirements analysis artifacts aligned with the current spec, template and canonical example.
+scope: requirements-analysis
+spec: requirements-standard-kit/spec-kit/requirements-analysis.schema.yaml
+canonicalExample: requirements-standard-kit/examples/operation-history-requirements-example.md
+
+blockingChecks:
+  - id: REQ-GATE-001
+    check: document_title_format
+    description: Document title matches `#### Анализ требований — <feature name>`.
+    requiredPattern: "^#### Анализ требований — .+$"
+  - id: REQ-GATE-002
+    check: required_sections_present
+    description: Artifact contains all required sections from the spec and canonical example.
+    requiredFields:
+      - Источник требования
+      - Стейкхолдеры
+      - Бизнес-правила и ограничения
+      - Цель фичи
+      - SMART-проверка цели
+      - Противоречия и решения
+      - Gaps и допущения
+  - id: REQ-GATE-003
+    check: section_heading_format
+    description: Section headings use bold labels with trailing colon, matching the template.
+    requiredPattern: "^\\*\\*.+:\\*\\*$"
+  - id: REQ-GATE-004
+    check: requirement_source_documented
+    description: Requirement source table identifies feature, source, initiator and date/version.
+    requiredRows:
+      - Фича
+      - Источник
+      - Инициатор
+      - Дата / версия
+  - id: REQ-GATE-005
+    check: stakeholders_documented
+    description: Stakeholders are documented with role, interest/expectation and influence/responsibility.
+    requiredColumns:
+      - Стейкхолдер
+      - Роль
+      - Интерес / ожидание
+      - Влияние / ответственность
+  - id: REQ-GATE-006
+    check: business_rules_and_constraints_present
+    description: Business rules and constraints are listed separately from the feature goal.
+    requiredColumns:
+      - ID
+      - Тип
+      - Описание
+      - Источник / обоснование
+  - id: REQ-GATE-007
+    check: feature_goal_answers_required_questions
+    description: Feature goal answers business problem, user value and improved metrics.
+    requiredRows:
+      - Какую бизнес-проблему решает?
+      - Какую ценность приносит пользователю?
+      - Какие метрики улучшает?
+  - id: REQ-GATE-008
+    check: smart_complete
+    description: SMART check contains all five criteria.
+    requiredRows:
+      - Specific
+      - Measurable
+      - Achievable
+      - Relevant
+      - Time-bound
+  - id: REQ-GATE-009
+    check: contradictions_resolved_or_absent
+    description: Contradictions are either documented with decision/rationale or explicitly marked as not identified.
+    acceptedAbsentValue: Противоречия не выявлены
+    requiredColumns:
+      - Требование 1
+      - Требование 2
+      - Источник 1
+      - Источник 2
+      - Решение
+      - Обоснование
+  - id: REQ-GATE-010
+    check: gaps_and_assumptions_tracked
+    description: Every missing value and weak assumption is marked with GAP-REQ/ASM-REQ and documented in `Gaps и допущения`.
+    requiredColumns:
+      - ID
+      - Тип
+      - Где обнаружено
+      - Что не хватает / что предполагается
+      - Как закрыть
+    requiredPatterns:
+      gap: "^GAP-REQ-[0-9]{3}$"
+      assumption: "^ASM-REQ-[0-9]{3}$"
+    acceptedNoGapValue: Gaps не выявлены
+  - id: REQ-GATE-011
+    check: no_unlinked_unknowns
+    description: Unknown or uncertain values are not expressed as vague prose; they must use linked GAP-REQ or ASM-REQ IDs.
+    forbiddenWithoutGapId:
+      - требует уточнения
+      - не указано
+      - неизвестно
+      - unknown
+      - TBD
+  - id: REQ-GATE-012
+    check: technical_identifiers_are_confirmed_or_marked
+    description: Field names, status codes, enum values, metric names, endpoint names, event names, source names and entity names are either provided by evidence or marked with ASM-REQ.
+    examples:
+      - created_at
+      - updated_at
+      - status
+      - conversion_rate
+      - product_id
+  - id: REQ-GATE-013
+    check: domain_specific_gaps_handled
+    description: If the task clearly belongs to a domain such as integration, data, sorting, UI, business rules, NFR, security or analytics, domain-specific unknowns are either clarified or tracked as GAP-REQ rows.
+    domains:
+      - integration
+      - data
+      - sorting/filtering/search
+      - UI/frontend
+      - business-rule/validation
+      - NFR
+      - security/access
+      - reporting/analytics
+  - id: REQ-GATE-014
+    check: no_unsupported_claims
+    description: Sources, stakeholders, metric targets, deadlines, business rules and decisions are backed by evidence or marked outside the final artifact as questions/gaps.
+  - id: REQ-GATE-015
+    check: no_forbidden_markers_or_standard_ids
+    description: Artifact does not contain unresolved markers, source standard IDs or internal traceability markers.
+    forbidden:
+      - TODO
+      - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+      - TRACE-
+      - OQ-
+      - CONFLICT-
+      - "Evidence / Traceability"
+      - "СТД-"
+
+warningChecks:
+  - id: REQ-WARN-001
+    check: canonical_example_not_followed
+    description: Section order or table granularity significantly differs from canonical requirements example.
+  - id: REQ-WARN-002
+    check: weak_metrics
+    description: Metrics are named but target values or measurement method are unclear.
+  - id: REQ-WARN-003
+    check: stakeholder_set_too_narrow
+    description: Feature appears to affect product, users, operations, compliance or engineering but stakeholder list is too narrow.
+  - id: REQ-WARN-004
+    check: constraints_missing
+    description: Feature has likely timeline, architecture, regulatory, channel or dependency constraints, but constraints are not documented.
+  - id: REQ-WARN-005
+    check: contradictions_not_checked
+    description: Artifact does not show whether conflicting requirements were checked.
+  - id: REQ-WARN-006
+    check: too_many_gaps
+    description: Artifact has many GAP-REQ rows and may need another clarification pass before being considered useful.
+  - id: REQ-WARN-007
+    check: assumptions_not_confirmed
+    description: Artifact contains ASM-REQ assumptions that should be confirmed before implementation planning.
+  - id: REQ-WARN-008
+    check: business_terms_over_normalized
+    description: Business wording appears to be converted into technical field names without confirmation.
+  - id: REQ-WARN-009
+    check: domain_questions_too_shallow
+    description: Task domain is obvious, but the artifact does not show enough domain-specific clarification or GAP-REQ tracking.
+
+decision:
+  approved:
+    condition: No blocking checks failed.
+  approved-with-warnings:
+    condition: No blocking checks failed, at least one warning remains.
+  needs-rework:
+    condition: One or more blocking checks failed.

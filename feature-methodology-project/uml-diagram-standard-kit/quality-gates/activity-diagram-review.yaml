@@ -1,0 +1,64 @@
+gate: activity-diagram-review
+description: Activity Diagram quality gate aligned with Activity Diagram standards and canonical examples.
+scope: activity-diagram
+spec: uml-diagram-standard-kit/spec-kit/activity-diagram.schema.yaml
+canonicalExample: uml-diagram-standard-kit/examples/activity-diagram-example.md
+
+blockingChecks:
+  - id: ACT-GATE-001
+    check: start_and_end_present
+    description: Activity diagram has a clear start and stop/end point.
+  - id: ACT-GATE-002
+    check: actions_are_atomic
+    description: Each action represents one process step and is not an overloaded paragraph.
+  - id: ACT-GATE-003
+    check: decisions_labeled
+    description: Decision conditions are explicitly labeled and testable.
+  - id: ACT-GATE-004
+    check: branches_have_outcomes
+    description: Each branch has a resulting action or terminal outcome.
+  - id: ACT-GATE-005
+    check: fork_join_semantics_correct
+    description: fork/end fork is used when all parallel flows must finish before continuing.
+  - id: ACT-GATE-006
+    check: fork_merge_semantics_correct
+    description: fork/end merge is used only when one successful branch is sufficient.
+  - id: ACT-GATE-007
+    check: swimlanes_used_when_needed
+    description: Swimlanes are used when several actors or responsibility zones perform actions.
+  - id: ACT-GATE-008
+    check: activity_traceability_complete
+    description: Numbered actions and decisions correspond to textual process or algorithm steps.
+  - id: ACT-GATE-009
+    check: activity_legend_complete
+    description: Legend explains start/stop, actions, conditions and fork/join or merge notation.
+  - id: ACT-GATE-010
+    check: no_source_standard_ids
+    description: Final example does not expose source standard IDs.
+    forbidden:
+      - "СТД-"
+  - id: ACT-GATE-011
+    check: error_paths_modeled_when_known
+    description: When error, retry, timeout or invalid-response behavior is confirmed, failure paths are shown with if/else and terminal outcomes.
+
+warningChecks:
+  - id: ACT-WARN-001
+    check: no_swimlanes_for_multi_actor_process
+    description: Multiple actors appear in the process but responsibility zones are not separated.
+  - id: ACT-WARN-002
+    check: vague_condition
+    description: A condition label is not concrete enough to test.
+  - id: ACT-WARN-003
+    check: too_many_branches
+    description: Diagram may need to be split because it contains too many branches.
+  - id: ACT-WARN-004
+    check: error_paths_not_clarified
+    description: Process contains calls or parallel branches but error/failure behavior was not clarified before drafting.
+
+decision:
+  approved:
+    condition: No blocking checks failed.
+  approved-with-warnings:
+    condition: No blocking checks failed, at least one warning remains.
+  needs-rework:
+    condition: One or more blocking checks failed.

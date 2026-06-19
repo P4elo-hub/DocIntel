@@ -1,0 +1,61 @@
+gate: state-diagram-review
+description: State Diagram quality gate aligned with State Diagram standards and canonical examples.
+scope: state-diagram
+spec: uml-diagram-standard-kit/spec-kit/state-diagram.schema.yaml
+canonicalExample: uml-diagram-standard-kit/examples/state-diagram-example.md
+
+blockingChecks:
+  - id: STATE-GATE-001
+    check: initial_and_final_states_present
+    description: State diagram has initial and final states.
+  - id: STATE-GATE-002
+    check: states_documented
+    description: All states on the diagram are listed or explained in the artifact.
+  - id: STATE-GATE-003
+    check: transitions_have_events
+    description: Transitions include triggering events when known.
+  - id: STATE-GATE-004
+    check: guards_are_explicit
+    description: Conditional transitions use guard conditions in square brackets.
+  - id: STATE-GATE-005
+    check: transition_actions_documented
+    description: Transition actions are documented in `/ action` format when known.
+  - id: STATE-GATE-006
+    check: state_actions_documented
+    description: State entry, exit and do actions are documented when known.
+  - id: STATE-GATE-007
+    check: nested_states_justified
+    description: Nested states are used only when the lifecycle contains a subprocess.
+  - id: STATE-GATE-008
+    check: parallel_regions_justified
+    description: Parallel regions are used only when the object has independent state dimensions.
+  - id: STATE-GATE-009
+    check: state_traceability_complete
+    description: Numbered transitions correspond to textual lifecycle, rule or process descriptions.
+  - id: STATE-GATE-010
+    check: state_legend_complete
+    description: Legend explains initial/final states, transitions, guards, actions and advanced notation.
+  - id: STATE-GATE-011
+    check: no_source_standard_ids
+    description: Final example does not expose source standard IDs.
+    forbidden:
+      - "СТД-"
+
+warningChecks:
+  - id: STATE-WARN-001
+    check: terminal_states_unclear
+    description: It is unclear which states are terminal.
+  - id: STATE-WARN-002
+    check: missing_failure_states
+    description: Lifecycle has success states but likely failure/cancel states are not described.
+  - id: STATE-WARN-003
+    check: vague_guard
+    description: Guard condition is not concrete enough to test.
+
+decision:
+  approved:
+    condition: No blocking checks failed.
+  approved-with-warnings:
+    condition: No blocking checks failed, at least one warning remains.
+  needs-rework:
+    condition: One or more blocking checks failed.

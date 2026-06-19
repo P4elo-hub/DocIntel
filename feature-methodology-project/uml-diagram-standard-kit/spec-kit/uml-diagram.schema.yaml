@@ -1,0 +1,163 @@
+artifact: uml-diagram
+description: General contract for UML diagram documentation.
+language: ru
+
+sourceStandardSections:
+  - "2.3 Общие требования к диаграммам"
+  - "2.4 UML-диаграммы"
+
+supportedDiagramTypes:
+  - sequence
+  - activity
+  - state
+
+typeSelection:
+  sequence:
+    useWhen:
+      - Описание сценариев взаимодействия
+      - Интеграционные взаимодействия
+      - Последовательность синхронных и асинхронных вызовов
+    spec: uml-diagram-standard-kit/spec-kit/sequence-diagram.schema.yaml
+    template: uml-diagram-standard-kit/templates/sequence-diagram.template.md
+    qualityGate: uml-diagram-standard-kit/quality-gates/sequence-diagram-review.yaml
+  activity:
+    useWhen:
+      - Описание бизнес-процесса
+      - Описание алгоритма
+      - Алгоритм с условиями, ветвлениями или параллельными потоками
+    spec: uml-diagram-standard-kit/spec-kit/activity-diagram.schema.yaml
+    template: uml-diagram-standard-kit/templates/activity-diagram.template.md
+    qualityGate: uml-diagram-standard-kit/quality-gates/activity-diagram-review.yaml
+  state:
+    useWhen:
+      - Описание состояний объекта
+      - Жизненный цикл заявки, заказа, операции или сущности
+      - Статусы, события, guards и transition actions
+    spec: uml-diagram-standard-kit/spec-kit/state-diagram.schema.yaml
+    template: uml-diagram-standard-kit/templates/state-diagram.template.md
+    qualityGate: uml-diagram-standard-kit/quality-gates/state-diagram-review.yaml
+
+requiredSections:
+  - Диаграмма
+  - Назначение
+  - Контекст
+  - PlantUML
+  - Легенда
+  - Соответствие тексту
+  - Gaps и допущения
+
+requiredDiagramMetadata:
+  - title
+  - caption
+  - diagramType
+  - scope
+  - versionOrDate
+
+storageFormat:
+  preferred:
+    - .puml
+    - .svg
+  tools:
+    - PlantUML
+    - Draw.io
+
+commonPlantUmlRules:
+  start: "@startuml"
+  end: "@enduml"
+  requireTitle: true
+  requireCaption: true
+  requireLegend: true
+  requireNumberedTraceability: true
+
+legend:
+  required: true
+  mustExplain:
+    - arrow_notation
+    - colors
+    - change_markers
+    - special_symbols
+  optionalWhenNotUsed:
+    - colors
+    - change_markers
+
+traceabilityTable:
+  required: true
+  columns:
+    - Элемент на диаграмме
+    - Номер
+    - Описание в тексте
+
+clarificationPolicy:
+  defaultMode: ask-first
+  alwaysAskErrorPaths: true
+  errorPathsMandatoryFor:
+    - sequence_diagram_with_service_calls
+    - activity_diagram_with_service_calls
+    - parallel_source_fetch
+    - integration_chains
+  draftAllowedOnlyWhen:
+    - user explicitly requests draft
+    - user explicitly requests proceed without clarification
+  mustAskBeforeDraftWhenUnknown:
+    - participant_names_and_aliases
+    - operation_endpoint_method_event_names
+    - sync_or_async_mode_per_message
+    - protocol_per_hop
+    - parallel_flow_semantics
+    - error_handling_and_fallback
+    - retry_timeout_invalid_response_behavior
+    - aggregation_or_mapping_rules
+    - source_list_for_parallel_fetch
+  mustModelOnDiagramWhenKnown:
+    - alternative_error_paths
+    - retry_loops
+    - timeout_branches
+    - invalid_response_branches
+    - partial_or_degraded_response_branches
+  preferStructuredQuestions: true
+  preferCompletenessOverBrevity: true
+
+gapAndAssumptionPolicy:
+  gapPrefix: GAP-UML
+  assumptionPrefix: ASM-UML
+  requiredTable: true
+  tableColumns:
+    - ID
+    - Тип
+    - Где найдено
+    - Описание
+    - Как закрыть
+  rules:
+    - Every unresolved required input must be marked with GAP-UML-NNN.
+    - Every inferred participant, operation, endpoint, topic, state, transition, guard, timing or marker must be marked with ASM-UML-NNN.
+    - Every GAP-UML-* and ASM-UML-* marker used in the artifact must have a row in `Gaps и допущения`.
+    - If no gaps or assumptions remain, the table must contain `Gaps не выявлены`.
+
+changeMarkers:
+  asIs:
+    recommendedMarkers:
+      - bottleneck
+      - manual_operation
+      - duplication
+  toBe:
+    recommendedMarkers:
+      - NEW
+      - CHG
+      - DEL
+
+forbiddenInFinalArtifact:
+  - TODO
+  - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+  - "unknown"
+  - "не указано"
+
+qualityRules:
+  - Агент задает уточняющие вопросы до draft, если не хватает данных для корректной диаграммы.
+  - Тип диаграммы выбран по ситуации и назначению.
+  - PlantUML код содержит @startuml и @enduml.
+  - Диаграмма имеет title и caption.
+  - Диаграмма имеет легенду.
+  - Нумерация элементов на диаграмме соответствует текстовому описанию.
+  - Все gaps и assumptions оформлены через GAP-UML-* и ASM-UML-*.
+  - Цвета и специальные метки объяснены в легенде.
+  - Диаграмма не содержит неподтвержденных участников, состояний, вызовов или переходов.

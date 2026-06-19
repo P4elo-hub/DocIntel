@@ -1,0 +1,34 @@
+gate: feature-toggles-review
+description: Feature toggle quality gate aligned with canonical transfer example.
+spec: nfr-standard-kit/spec-kit/feature-toggles.schema.yaml
+canonicalExample: nfr-standard-kit/examples/account-transfer-feature-toggles-example.md
+
+blockingChecks:
+  - id: TOGL-GATE-001
+    check: toggle_card_complete
+    description: Each toggle has key, description, type, default and rollout strategy.
+  - id: TOGL-GATE-002
+    check: on_off_behavior
+    description: ON and OFF behavior documented for system, UI and API.
+  - id: TOGL-GATE-003
+    check: dependencies_documented
+    description: Dependencies table present when toggle interacts with other flags.
+  - id: TOGL-GATE-006
+    check: assumptions_traceable
+    description: >
+      Each dependency row and each designed field has Статус with DESIGN-NFR/GAP or Подтверждено;
+      Gaps и допущения lists every DESIGN-NFR used in body (Где в документе + Подтверждено?).
+  - id: TOGL-GATE-004
+    check: removal_plan
+    description: Release/Experiment toggles have removal plan with stages and owners.
+  - id: TOGL-GATE-005
+    check: verification_checklist
+    description: Go/no-go checklist with OK and Rollback thresholds per metric.
+
+warningChecks:
+  - id: TOGL-WARN-001
+    check: release_without_removal_date
+    description: Release toggle without planned removal date.
+  - id: TOGL-WARN-002
+    check: experiment_without_segment
+    description: Experiment toggle without user segment or rollout stage definition.

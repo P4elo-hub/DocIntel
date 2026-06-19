@@ -1,0 +1,90 @@
+gate: nfr-review
+description: General quality gate for any NFR artifact before domain-specific review.
+scope: domain-agnostic
+spec: nfr-standard-kit/spec-kit/nfr-page.schema.yaml
+
+canonicalExamples:
+  performance: nfr-standard-kit/examples/account-transfer-performance-example.md
+  reliability: nfr-standard-kit/examples/account-transfer-reliability-example.md
+  configuration: nfr-standard-kit/examples/account-transfer-configuration-example.md
+  feature-toggles: nfr-standard-kit/examples/account-transfer-feature-toggles-example.md
+
+blockingChecks:
+  - id: NFR-GATE-000
+    check: clarification_first_completed
+    description: >
+      Mandatory clarification questionnaire (nfr-clarification.schema.yaml) was
+      completed before final NFR artifacts. First short user prompt must not yield
+      final tables with invented metrics.
+    spec: nfr-standard-kit/spec-kit/nfr-clarification.schema.yaml
+    requiredBeforeFinalArtifact:
+      - clarificationPassCompleted
+      - userModeChoice recorded in working layer
+    mandatoryExplicitTopicsWhenPerformanceSelected:
+      - latency_percentile_and_target
+      - throughput_and_peak
+      - rate_limit
+      - throttling
+      - circuit_breaker
+      - ccu_and_overload
+    allowedWithoutFullClarificationWhen:
+      - user explicitly requests draft
+      - user explicitly requests proceed without clarification
+      - user attaches SLO/load test/monitoring evidence
+      - user authorized DESIGN-NFR-* for greenfield metrics
+    forbidden:
+      - final performance tables on first message without clarification block
+      - silent skip of circuit_breaker question when performance domain selected
+  - id: NFR-GATE-001
+    check: document_title_format
+    description: Title matches `#### NFR — <feature> (<domain>)` without `Пример:`.
+    requiredPattern: "^#### NFR — .+ \\(.+\\)$"
+    forbidden:
+      - "Пример:"
+  - id: NFR-GATE-002
+    check: no_std_ids_in_reader_page
+    description: Final artifact does not contain source standard IDs СТД-*.
+    forbiddenPattern: "СТД-"
+  - id: NFR-GATE-003
+    check: domain_specific_spec_selected
+    description: Relevant domain spec is selected for the artifact being reviewed.
+  - id: NFR-GATE-004
+    check: domain_gate_applied
+    description: Relevant domain quality gate is applied after this general gate.
+  - id: NFR-GATE-005
+    check: no_unresolved_markers_in_permanent_page
+    description: Permanent page does not contain TODO, unresolved unknown markers, TRACE, OQ or CONFLICT IDs.
+    forbidden:
+      - TODO
+      - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+      - TRACE-
+      - OQ-
+      - CONFLICT-
+  - id: NFR-GATE-006
+    check: no_unsupported_numeric_claims
+    description: SLA, SLO, latency, RPS, CCU, TTL, pool size, config defaults and toggle thresholds are present only when backed by evidence.
+  - id: NFR-GATE-007
+    check: gaps_registry_synced_with_inline_markers
+    description: >
+      Section Gaps и допущения exists; every DESIGN-NFR-* and GAP-NFR-* in body has a row
+      (Где в документе, Подтверждено?, Как закрыть); every row references a marker in body;
+      toggle dependencies and «no conflicts» rows are not bare facts.
+    requiredSection: Gaps и допущения
+    requiredGapsColumns:
+      - ID
+      - Тип
+      - Где в документе
+      - Что предположено / не уточнялось
+      - Подтверждено?
+      - Как закрыть
+
+warningChecks:
+  - id: NFR-WARN-001
+    check: canonical_example_copied_without_evidence
+    description: Numeric values match canonical transfer example but feature context differs.
+  - id: NFR-WARN-002
+    check: security_domain_missing_for_sensitive_feature
+    description: Feature handles payments, PII or auth but security artifact was skipped.
+  - id: NFR-WARN-003
+    check: status_column_missing
+    description: Tables with designed values lack column Статус; skill Assumption and Gap Registry pass not applied.

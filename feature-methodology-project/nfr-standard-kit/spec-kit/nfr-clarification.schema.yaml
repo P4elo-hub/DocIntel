@@ -1,0 +1,357 @@
+artifact: nfr-clarification
+description: Mandatory clarification questionnaire before final NFR artifacts.
+language: ru
+parentSpec: nfr-standard-kit/spec-kit/nfr-page.schema.yaml
+
+clarificationPolicy:
+  mode: clarification-first
+  defaultFirstResponse: questions-only
+  rule: >
+    На первом коротком запросе пользователя агент НЕ пишет финальные NFR-артефакты
+    (performance/reliability/security/configuration/feature-toggles).
+    Сначала задаёт обязательный блок уточнений по выбранным доменам.
+    Финальный артефакт допустим только после ответов пользователя, явного выбора
+    режима B/C/D ниже или явной просьбы «черновик с GAP».
+
+  draftWithoutClarificationAllowedWhen:
+    - user explicitly requests draft
+    - user explicitly requests proceed without clarification
+    - user attaches capacity plan / load test / SLO doc / monitoring baseline as evidence
+    - user explicitly chooses greenfield design (DESIGN-NFR-*)
+
+  mandatoryAnswerOptions:
+    - id: A
+      label: Пришлю данные — load test, SLO, мониторинг, архитектура, конфиг, флаги
+      behavior: wait-for-evidence
+    - id: B
+      label: Спроектируй NFR с нуля — зафиксируй допущения DESIGN-NFR-*
+      behavior: authorize-greenfield-design
+      marksWith: DESIGN-NFR
+    - id: C
+      label: Частично знаю — заполню известное, остальное GAP-NFR / ASM-NFR
+      behavior: partial-evidence-only
+    - id: D
+      label: Пока не знаю — только GAP-NFR, без выдуманных цифр
+      behavior: gap-only
+
+  workingLayerBeforeFinalArtifact:
+    requiredRecords:
+      - selectedDomains
+      - clarificationPassCompleted
+      - userModeChoice
+      - unansweredMandatoryTopics as GAP-NFR-* or answered values
+    clarificationPassCompletedIsTrueWhen:
+      - all mandatory topics for selected domains are answered by user or evidence
+      - OR user chose B with DESIGN-NFR-* recorded per invented metric
+      - OR user chose D and final artifact contains only GAP rows without invented numbers
+      - OR draftWithoutClarificationAllowedWhen condition met
+
+  forbiddenWithoutClarification:
+    - copying numeric targets from canonical transfer example for unrelated feature
+    - inventing p85/p95, RPS, CCU, TTL, pool size, circuit breaker thresholds without evidence or DESIGN-NFR
+    - skipping load-management questions when API or distributed flow exists
+    - writing final NFR tables on first message without clarification block
+
+  preferStructuredQuestions: true
+  preferGroupedByDomain: true
+  questionnaireTemplate: nfr-standard-kit/templates/nfr-clarification-questionnaire.template.md
+
+domainSelection:
+  askWhenAmbiguous: true
+  defaultForApiFeature:
+    - performance
+    - reliability
+  defaultForUiFeature:
+    - performance
+  defaultForConfigChange:
+    - configuration
+  defaultForRollout:
+    - feature-toggles
+    - reliability
+  alwaysOfferSecurityWhen:
+    - payments
+    - PII
+    - auth
+    - 2FA
+    - secrets
+
+mandatoryQuestionCatalog:
+
+  performance:
+    - id: PERF-Q-001
+      topic: scope_operations
+      mandatory: true
+      question: Какие endpoint / RPC / очередь / экран / SQL-запрос входят в scope NFR?
+      blocksSections:
+        - 7.1.1
+        - 7.1.2
+        - 7.1.6
+      ifUnknown: GAP-NFR
+
+    - id: PERF-Q-002
+      topic: latency_percentile_and_target
+      mandatory: true
+      question: >
+        Какой перцентиль обязателен (p85 / p95 / p99) и целевое время отклика
+        для каждой операции в scope? При каких условиях измерения (CCU, RPS, объём данных)?
+      blocksSections:
+        - 7.1.1
+      ifUnknown: GAP-NFR
+      exampleFollowUp: "Напр. GET /items p85 < 300 ms при 200 RPS и 500 CCU"
+
+    - id: PERF-Q-003
+      topic: throughput_and_peak
+      mandatory: true
+      question: >
+        Какая штатная и пиковая нагрузка (RPS / msg/s) для каждого endpoint/очереди?
+        Пиковый множитель, длительность пика, календарные окна (утро, зарплата, акции)?
+      blocksSections:
+        - 7.1.2
+      ifUnknown: GAP-NFR
+
+    - id: PERF-Q-004
+      topic: business_transaction_sla
+      mandatory: when
+        - distributed_transaction
+        - saga
+        - multi_service_flow
+        - payment_or_transfer_flow
+      question: >
+        Есть ли end-to-end бизнес-транзакция? SLA (85-й перцентиль), таймаут клиента/HTTP,
+        step timeout по шагам, global timeout, компенсация при превышении?
+      blocksSections:
+        - 7.1.3
+      ifUnknown: GAP-NFR
+
+    - id: PERF-Q-005
+      topic: web_vitals
+      mandatory: when
+        - ui_screens_in_scope
+      question: >
+        Какие экраны в scope? Целевые LCP, FID, CLS, TTI? Стратегия загрузки
+        (eager / lazy / skeleton / pagination / prefetch) по блокам UI?
+      blocksSections:
+        - 7.1.4
+      ifUnknown: GAP-NFR
+
+    - id: PERF-Q-006
+      topic: ccu_and_overload
+      mandatory: true
+      question: >
+        CCU / активные пользователи (штат / пик), лимит сессий на пользователя,
+        поведение при перегрузке (HTTP 429, Retry-After, очередь, degradation)?
+      blocksSections:
+        - 7.1.5
+      ifUnknown: GAP-NFR
+
+    - id: PERF-Q-007
+      topic: rate_limit
+      mandatory: true
+      question: >
+        Нужен ли Rate Limiting? Лимит (запросов/сек) на пользователя и/или IP?
+        На какие endpoint применяется?
+      blocksSections:
+        - 7.1.5
+      allowedAnswers:
+        - да с параметрами
+        - нет с обоснованием
+        - GAP-NFR
+      ifUnknown: GAP-NFR
+
+    - id: PERF-Q-008
+      topic: throttling
+      mandatory: true
+      question: >
+        Нужен ли Throttling параллельных операций на пользователя?
+        Макс. параллельных операций и для каких endpoint?
+      blocksSections:
+        - 7.1.5
+      allowedAnswers:
+        - да с параметрами
+        - нет с обоснованием
+        - GAP-NFR
+
+    - id: PERF-Q-009
+      topic: circuit_breaker
+      mandatory: true
+      question: >
+        Нужен ли Circuit Breaker на зависимости? Для каких сервисов,
+        порог ошибок (%), cooldown, поведение при открытом breaker?
+      blocksSections:
+        - 7.1.5
+        - 7.2
+      allowedAnswers:
+        - да с параметрами
+        - нет с обоснованием
+        - GAP-NFR
+      ifUnknown: GAP-NFR
+
+    - id: PERF-Q-010
+      topic: bulkhead_backpressure
+      mandatory: when
+        - multiple_critical_dependencies
+        - async_queue_consumer
+      question: >
+        Нужны ли Bulkhead (изоляция пулов) и/или Backpressure (очередь)?
+        Параметры и где применяются?
+      blocksSections:
+        - 7.1.5
+      ifUnknown: GAP-NFR
+
+    - id: PERF-Q-011
+      topic: database_performance
+      mandatory: when
+        - database_reads_or_writes_in_scope
+      question: >
+        Ключевые запросы к БД: max время, объём данных, требуемые индексы?
+        Pool size, timeout получения соединения, max idle — и обоснование?
+      blocksSections:
+        - 7.1.6
+      ifUnknown: GAP-NFR
+
+    - id: PERF-Q-012
+      topic: caching
+      mandatory: when
+        - cache_used_or_planned
+      question: >
+        Что кэшируется: ключ, уровень (L1–L4), TTL, инвалидация, max size,
+        поведение при промахе?
+      blocksSections:
+        - 7.1.7
+      allowedAnswers:
+        - перечень ресурсов
+        - кэш не используется
+        - GAP-NFR
+      ifUnknown: GAP-NFR
+
+  reliability:
+    - id: REL-Q-001
+      topic: slo_metrics
+      mandatory: true
+      question: >
+        Целевые SLO: Availability, Error rate, Latency (перцентиль и endpoint)?
+        Допустимый error budget / контекст измерения?
+      blocksSections:
+        - 7.2
+      ifUnknown: GAP-NFR
+
+    - id: REL-Q-002
+      topic: dependency_failure
+      mandatory: true
+      question: >
+        Список критичных зависимостей (API, БД, кэш, очередь).
+        Поведение при отказе каждой и fallback (graceful degradation)?
+      blocksSections:
+        - 7.2
+      ifUnknown: GAP-NFR
+
+    - id: REL-Q-003
+      topic: aligns_with_circuit_breaker
+      mandatory: when
+        - PERF-Q-009 answer is yes
+      question: >
+        Согласованы ли SLO/reliability с Circuit Breaker: что допустимо при
+        открытом breaker (отложенная проверка, bypass, fail)?
+      blocksSections:
+        - 7.2
+      ifUnknown: GAP-NFR
+
+  security:
+    - id: SEC-Q-001
+      topic: authentication
+      mandatory: true
+      question: Механизм аутентификации по каналам (web/mobile/API)? Обязательность для операций?
+      ifUnknown: GAP-NFR
+
+    - id: SEC-Q-002
+      topic: step_up_2fa
+      mandatory: when
+        - payments
+        - high_value_operations
+      question: Нужен ли step-up / 2FA? Порог суммы или условие срабатывания?
+      ifUnknown: GAP-NFR
+
+    - id: SEC-Q-003
+      topic: authorization
+      mandatory: true
+      question: Роли и права на операции фичи (кто может выполнять / видеть)?
+      ifUnknown: GAP-NFR
+
+    - id: SEC-Q-004
+      topic: sensitive_data
+      mandatory: true
+      question: >
+        Какие поля чувствительные (PII, финансы, секреты)? Шифрование at rest/in transit,
+        маскирование в UI и логах, срок хранения?
+      ifUnknown: GAP-NFR
+
+  configuration:
+    - id: CONF-Q-001
+      topic: parameter_list
+      mandatory: true
+      question: >
+        Полный список параметров: ключ, тип, default, уровень (public/internal/secret),
+        частота (static/dynamic/runtime), область, хранение?
+      ifUnknown: GAP-NFR
+
+    - id: CONF-Q-002
+      topic: validation_rollback
+      mandatory: true
+      question: >
+        Для каждого параметра: валидация (min/max/pattern), влияние при изменении,
+        процедура отката?
+      ifUnknown: GAP-NFR
+
+    - id: CONF-Q-003
+      topic: change_procedure
+      mandatory: true
+      question: Кто меняет static/dynamic/runtime параметры и нужно ли согласование?
+      ifUnknown: GAP-NFR
+
+  feature-toggles:
+    - id: TOGL-Q-001
+      topic: toggle_inventory
+      mandatory: true
+      question: >
+        Список тоглов: ключ, тип (Release/Experiment/Ops/Permission), default,
+        владелец, план удаления?
+      ifUnknown: GAP-NFR
+
+    - id: TOGL-Q-002
+      topic: on_off_behavior
+      mandatory: true
+      question: Поведение системы, UI и API при ON и OFF для каждого тогла?
+      ifUnknown: GAP-NFR
+
+    - id: TOGL-Q-003
+      topic: rollout_strategy
+      mandatory: true
+      question: >
+        Стратегия раскатки (Boolean / Block / Segment / Canary)?
+        Этапы, % аудитории, блоки?
+      ifUnknown: GAP-NFR
+
+    - id: TOGL-Q-004
+      topic: toggle_dependencies
+      mandatory: true
+      question: >
+        Зависимости между тоглами (requires / conflicts / includes)?
+        Что если зависимый тогл выключен?
+      allowedAnswers:
+        - таблица зависимостей
+        - зависимостей нет
+        - GAP-NFR
+
+    - id: TOGL-Q-005
+      topic: verification_checklist
+      mandatory: true
+      question: >
+        Go/no-go после каждого этапа rollout: метрики, порог OK, порог Rollback,
+        источник, период наблюдения?
+      ifUnknown: GAP-NFR
+
+coverageRules:
+  - Before final artifact, every mandatory question for selected domains must be answered, marked GAP-NFR, or authorized via DESIGN-NFR.
+  - PERF-Q-007, PERF-Q-008, PERF-Q-009 must receive explicit да/нет; silence is not allowed when performance domain is selected.
+  - If user answers «нет» to circuit breaker, document justification in reliability or performance section.
+  - Unanswered mandatory topic must not appear as invented number in final tables.

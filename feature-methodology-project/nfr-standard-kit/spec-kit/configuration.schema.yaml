@@ -1,0 +1,80 @@
+artifact: configuration
+description: Contract for configuration parameters NFR documentation.
+language: ru
+canonicalExample: nfr-standard-kit/examples/account-transfer-configuration-example.md
+sourceStandardSection: "7.4 Настройки и конфигурация"
+clarificationPolicyRef: nfr-standard-kit/spec-kit/nfr-clarification.schema.yaml
+clarificationBeforeFinalArtifact:
+  mandatory: true
+
+documentTitle:
+  pattern: "^#### NFR — .+ \\(Конфигурация\\)$"
+
+requiredSections:
+  - Классификация параметров
+  - Таблица конфигурационных параметров
+  - Способы хранения
+  - Процедура изменения параметров
+
+classification:
+  securityLevel:
+    columns:
+      - Уровень
+      - Описание
+      - Примеры
+      - Способ хранения
+    values:
+      - public
+      - internal
+      - secret
+  changeFrequency:
+    columns:
+      - Тип
+      - Описание
+      - Примеры
+      - Требует перезапуска
+    values:
+      - static
+      - dynamic
+      - runtime
+  scope:
+    columns:
+      - Область
+      - Описание
+      - Примеры
+    values:
+      - global
+      - environment-specific
+      - instance-specific
+
+parametersTable:
+  columns:
+    - Параметр
+    - Тип
+    - Уровень
+    - Частота
+    - Область
+    - Хранение
+    - По умолчанию
+    - Описание
+    - Валидация
+    - Влияние при изменении
+    - Процедура отката
+
+storageTable:
+  columns:
+    - Способ
+    - Когда использовать
+    - Примеры
+
+changeProcedureTable:
+  columns:
+    - Тип параметра
+    - Процедура изменения
+    - Кто изменяет
+    - Требуется согласование
+
+perParameterRequirements:
+  - validation min max pattern
+  - impact on system when changed
+  - rollback procedure on incorrect value

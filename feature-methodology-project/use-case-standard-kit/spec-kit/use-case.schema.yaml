@@ -1,0 +1,137 @@
+artifact: use-case
+description: Contract for a Use Case artifact aligned with the canonical example.
+language: ru
+
+canonicalExample: use-case-standard-kit/examples/transfer-between-accounts-use-case-example.md
+
+requiredSections:
+  - Структура Use Case
+  - Предусловия
+  - Постусловия
+  - Бизнес-правила
+  - Основной сценарий — Happy Path
+  - Альтернативные сценарии
+  - Связи между Use Cases
+
+headingFormat:
+  documentTitle:
+    pattern: "^#### Use Case — .+$"
+  sectionTitle:
+    pattern: "^\\*\\*.+:\\*\\*$"
+  codeBlock:
+    languageTag: none
+
+requiredTables:
+  structure:
+    title: Структура Use Case
+    columns:
+      - Элемент
+      - Значение
+    requiredRows:
+      - Название
+      - Актор(ы)
+      - Триггер
+      - Предусловия
+      - Постусловия
+      - Бизнес-правила
+  preconditions:
+    title: Предусловия
+    columns:
+      - №
+      - Предусловие
+      - Проверяемое условие
+  postconditions:
+    title: Постусловия
+    columns:
+      - Исход
+      - Постусловие
+    requiredRows:
+      - Успех
+  businessRules:
+    title: Бизнес-правила
+    columns:
+      - ID
+      - Правило
+      - Применяется на шаге
+  relationships:
+    title: Связи между Use Cases
+    columns:
+      - Связь
+      - Связанный Use Case
+      - Шаг / Extension Point
+      - Условие
+
+mainScenario:
+  stepPrefix: "Шаг"
+  numbering: sequential
+  actorSystemSeparation: required
+  atomicStep: required
+  businessRuleReferencePattern: "\\[BR-[0-9]+\\]"
+  branchReferencePattern: "[0-9]+[a-z]"
+  explicitConditionFormat:
+    required: true
+    keywords:
+      - ЕСЛИ
+      - ТО
+      - ИНАЧЕ
+      - ПЕРЕЙТИ К альтернативному сценарию
+    rule: Every conditional branch in the main scenario must explicitly state the success path and the alternative path.
+  successPath:
+    required: true
+    examples:
+      - "ТО сценарий продолжается с шага N"
+      - "ТО перейти к проверке BR-N"
+      - "ТО выполнить действие"
+  alternativePath:
+    required: true
+    pattern: "ПЕРЕЙТИ К альтернативному сценарию [0-9]+[a-z]"
+
+alternativeScenarios:
+  numbering:
+    pattern: "^[0-9]+[a-z]\\."
+    mustReferenceMainScenarioStep: true
+  requiredClassification:
+    - Ошибки валидации
+    - Бизнес-ошибки
+    - Технические ошибки
+    - Пограничные случаи
+  requiredExit:
+    - "Возврат к шагу N"
+    - "Сценарий завершается неуспешно"
+
+allowedRelationships:
+  - include
+  - extend
+  - Generalization
+
+reusePolicy:
+  usedBy:
+    - feature-standard-kit
+    - process-state-standard-kit
+    - frontend-standard-kit
+    - integration-standard-kit
+  rule: If an artifact requires actor goal, scenario, branch, exception or step-by-step behavior, apply use-case-standard-kit instead of duplicating Use Case rules locally.
+
+forbiddenInPermanentPage:
+  - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+  - "TODO"
+  - "TRACE-"
+  - "OQ-"
+  - "CONFLICT-"
+  - "Evidence / Traceability"
+  - "СТД-"
+  - "angle-bracket relationship notation"
+
+qualityRules:
+  - Название Use Case сформулировано как цель актора: глагол + объект.
+  - Предусловия проверяемые и не содержат расплывчатых формулировок.
+  - Постусловия описывают успешный исход и релевантные неуспешные исходы.
+  - Основной сценарий имеет сквозную нумерацию и атомарные шаги.
+  - Действия актора и реакции системы разделены.
+  - Условия в шагах конкретные, проверяемые и оформлены через ЕСЛИ / ТО / ИНАЧЕ.
+  - Для каждого условия явно указан успешный путь продолжения сценария.
+  - Для каждого неуспешного условия явно указан переход к альтернативному сценарию.
+  - Бизнес-правила имеют ID и привязку к шагам.
+  - Каждая ссылка на альтернативный сценарий в happy path имеет соответствующий сценарий.
+  - Каждый альтернативный сценарий классифицирован и имеет точку возврата или завершения.
+  - Связи include и extend имеют шаг или extension point.

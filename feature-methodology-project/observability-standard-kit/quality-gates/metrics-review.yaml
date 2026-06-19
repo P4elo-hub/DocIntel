@@ -1,0 +1,26 @@
+gate: metrics-review
+description: Metrics artifact quality gate aligned with account-transfer metrics example.
+spec: observability-standard-kit/spec-kit/metrics.schema.yaml
+canonicalExample: observability-standard-kit/examples/account-transfer-metrics-example.md
+
+blockingChecks:
+  - id: METR-GATE-001
+    check: technical_metrics_section
+    description: Technical Prometheus metrics with type and labels.
+  - id: METR-GATE-002
+    check: error_metrics_section
+    description: Error metrics counters documented.
+  - id: METR-GATE-003
+    check: business_metrics_section
+    description: Business metrics with formulas when business KPIs apply.
+  - id: METR-GATE-004
+    check: frontend_metrics_section
+    description: Frontend events table when UI exists; parameters column format.
+  - id: METR-GATE-005
+    check: assumptions_traceable
+    description: Status column and Gaps section for DESIGN-OBS/GAP-OBS.
+
+warningChecks:
+  - id: METR-WARN-001
+    check: frontend_section_skipped
+    description: Feature has UI but frontend metrics section empty.

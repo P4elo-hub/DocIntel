@@ -1,0 +1,95 @@
+artifact: activity-diagram
+description: Contract for UML Activity Diagram documentation.
+language: ru
+
+canonicalExample: uml-diagram-standard-kit/examples/activity-diagram-example.md
+sourceStandardSection: "2.4.2 Требования к Activity Diagram"
+
+requiredSections:
+  - Диаграмма
+  - Назначение
+  - Действия и условия
+  - PlantUML
+  - Легенда
+  - Соответствие тексту
+  - Gaps и допущения
+
+requiredPlantUmlElements:
+  - "@startuml"
+  - title
+  - caption
+  - start
+  - action
+  - stop_or_end
+  - legend
+  - "@enduml"
+
+requiredActivityElements:
+  - start
+  - stop
+  - action
+
+conditionalActivityElements:
+  decision:
+    requiredWhen: process_has_branching
+    plantUml:
+      - "if (condition?) then (да)"
+      - "else (нет)"
+      - "endif"
+  forkJoin:
+    requiredWhen: all_parallel_flows_must_finish
+    plantUml:
+      - fork
+      - "fork again"
+      - "end fork"
+  forkMerge:
+    requiredWhen: any_parallel_flow_is_enough
+    plantUml:
+      - fork
+      - "fork again"
+      - "end merge"
+  swimlane:
+    requiredWhen: several_actors_or_responsibility_zones
+
+conditionRules:
+  explicitLabelsRequired: true
+  labelExamples:
+    - "[amount > 0]"
+    - "[isValid = true]"
+    - "[else]"
+  eachBranchHasOutcome: true
+
+traceabilityTable:
+  columns:
+    - Элемент на диаграмме
+    - Номер
+    - Описание в тексте
+
+clarificationRequirements:
+  mustAskBeforeDraft:
+    - start_and_end_states
+    - decision_conditions
+    - parallel_branch_semantics
+    - error_branches_and_terminal_outcomes
+    - retry_timeout_invalid_response_behavior
+  mustModelWhenKnown:
+    - failure_paths_with_if_else
+    - retry_loops
+    - timeout_exits
+    - invalid_response_branches
+
+forbiddenInFinalArtifact:
+  - TODO
+  - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+  - "СТД-"
+
+qualityRules:
+  - Перед draft заданы уточнения по error paths, retry, timeout и invalid response, если процесс содержит вызовы или параллельные ветки.
+  - Если error behavior подтвержден, failure paths показаны через if/else и terminal outcomes.
+  - Диаграмма имеет явную точку входа и точку завершения.
+  - Все действия являются атомарными шагами процесса.
+  - Условия на решениях явно подписаны.
+  - Каждая ветка условия имеет понятный результат.
+  - Fork/Join используется только когда нужно дождаться всех потоков.
+  - Fork/Merge используется только когда достаточно одного потока.
+  - Swimlane используется при нескольких зонах ответственности.

@@ -1,0 +1,189 @@
+artifact: rest-api
+description: Contract for REST endpoint documentation.
+language: ru
+
+canonicalExample: integration-standard-kit/examples/rest-integration-example.md
+sourceStandardSection: "4.2 REST API; 4.6 Синхронные интеграции; 4.8 Документирование API; 4.9 Примеры"
+
+requiredSections:
+  - Endpoint signature
+  - Общая информация
+  - Request Headers
+  - Path Parameters
+  - Query Parameters
+  - ENUM sections
+  - Response Headers
+  - Response Body 200 OK
+  - Пример запроса и ответа
+  - Пограничный случай
+  - Коды ошибок
+
+generalInfoTable:
+  title: Общая информация
+  columns:
+    - Параметр
+    - Значение
+  requiredRows:
+    - Назначение
+    - Система-источник
+    - Система-получатель
+    - Тип интеграции
+    - Протокол
+    - Направление
+    - Версия API
+    - Аутентификация
+    - Формат данных
+  conditionalRows:
+    - Rate Limit
+    - Timeout
+    - Retry Policy
+
+httpMethods:
+  GET:
+    idempotent: true
+    purpose: Получение ресурса
+  POST:
+    idempotent: false
+    purpose: Создание ресурса или запуск операции
+  PUT:
+    idempotent: true
+    purpose: Полное обновление ресурса
+  PATCH:
+    idempotent: true
+    purpose: Частичное обновление ресурса
+  DELETE:
+    idempotent: true
+    purpose: Удаление ресурса
+
+endpointRules:
+  - Использовать существительные во множественном числе, если endpoint проектируется заново.
+  - Использовать иерархию ресурсов для вложенных сущностей.
+  - Версионирование path указывать как `/api/vN/...`, если оно есть в контракте.
+  - Для reverse engineering существующего API фиксировать фактический path из кода/OpenAPI/SOWA, даже если он нарушает стиль.
+
+requiredStatusCodes:
+  success:
+    - 200
+    - 201
+    - 204
+  error:
+    - 400
+    - 401
+    - 403
+    - 404
+    - 409
+    - 422
+    - 429
+    - 500
+    - 503
+
+requestHeaderColumns:
+  - Заголовок
+  - Обязат.
+  - Описание
+  - Пример
+
+responseHeaderColumns:
+  - Заголовок
+  - Описание
+  - Пример
+
+pathParameterColumns:
+  - Параметр
+  - Тип
+  - Обязат.
+  - Описание
+  - Валидация
+  - Пример
+
+queryParameterColumns:
+  - Параметр
+  - Тип
+  - Обязат.
+  - Описание
+  - Валидация
+  - По умолч.
+  - Пример
+
+requestBodyColumns:
+  - Параметр
+  - Тип
+  - Формат
+  - Nullable
+  - Описание
+  - Валидация
+  - По умолч.
+  - Пример
+  - Маппинг
+
+responseFieldColumns:
+  - Параметр
+  - Тип
+  - Формат
+  - Nullable
+  - Описание
+  - Валидация
+  - Пример
+  - Маппинг
+
+enumTableColumns:
+  - Значение
+  - Описание
+
+exampleRequirements:
+  - Happy path request in `http` fenced block.
+  - Happy path response in `json` fenced block.
+  - Boundary case for empty result when endpoint returns collection.
+  - Boundary case note explaining empty array/null behavior when applicable.
+  - Error table with HTTP code, machine-readable error code and description.
+
+jsonSchemaRequirements:
+  requiredWhen: "request/response schema is being specified or generated"
+  requiredElements:
+    - $schema
+    - title
+    - description
+    - type
+    - required
+    - properties
+  validationKeywords:
+    string:
+      - minLength
+      - maxLength
+      - pattern
+      - format
+      - enum
+    number:
+      - minimum
+      - maximum
+      - exclusiveMinimum
+      - exclusiveMaximum
+      - multipleOf
+    array:
+      - minItems
+      - maxItems
+      - uniqueItems
+      - items
+    object:
+      - required
+      - properties
+      - additionalProperties
+      - minProperties
+      - maxProperties
+
+forbidden:
+  - Абстрактные примеры вида "string", "email@email.com", "123".
+  - Runtime URL без источника.
+  - Rate limit без источника.
+
+qualityRules:
+  - HTTP method matches operation semantics and idempotency.
+  - Endpoint naming uses nouns and resource hierarchy unless an existing contract says otherwise.
+  - OpenAPI 3.0 is referenced when available.
+  - Empty result behavior is documented for collection endpoints.
+  - Error response includes machine-readable error code when contract supports it.
+  - Request headers table is mandatory for every endpoint.
+  - Response headers table is mandatory for every endpoint when response headers are known.
+  - Conditional required parameters must include a separate condition table.
+  - Enums must list values and descriptions.
+  - Examples must use realistic UUID, date, enum and amount values.

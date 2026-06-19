@@ -1,0 +1,77 @@
+gate: integration-review
+description: General quality gate for any integration artifact before protocol-specific review.
+scope: protocol-agnostic
+spec: integration-standard-kit/spec-kit/integration-page.schema.yaml
+canonicalExamples:
+  REST: integration-standard-kit/examples/rest-integration-example.md
+  gRPC: integration-standard-kit/examples/grpc-service-example.md
+  GraphQL: integration-standard-kit/examples/graphql-operation-example.md
+  SOAP: integration-standard-kit/examples/soap-operation-example.md
+  Async: integration-standard-kit/examples/async-message-example.md
+
+blockingChecks:
+  - id: INT-GATE-001
+    check: integration_boundary_defined
+    description: General info defines source system, target system, integration type, protocol and direction.
+    requiredFields:
+      - Система-источник
+      - Система-получатель
+      - Тип интеграции
+      - Протокол
+      - Направление
+  - id: INT-GATE-002
+    check: evidence_for_claims
+    description: Every meaningful current-state claim has evidence in the working layer.
+  - id: INT-GATE-003
+    check: general_info_present
+    description: Page contains `Общая информация` table with columns `Параметр | Значение`.
+  - id: INT-GATE-004
+    check: protocol_specific_spec_selected
+    description: Relevant protocol spec is selected according to protocol.
+    mapping:
+      REST: integration-standard-kit/spec-kit/rest-api.schema.yaml
+      gRPC: integration-standard-kit/spec-kit/grpc-service.schema.yaml
+      GraphQL: integration-standard-kit/spec-kit/graphql-operation.schema.yaml
+      SOAP: integration-standard-kit/spec-kit/soap-operation.schema.yaml
+      Kafka: integration-standard-kit/spec-kit/async-message.schema.yaml
+      RabbitMQ: integration-standard-kit/spec-kit/async-message.schema.yaml
+  - id: INT-GATE-005
+    check: protocol_gate_applied
+    description: Relevant protocol-specific quality gate is applied after this general gate.
+  - id: INT-GATE-006
+    check: no_unresolved_markers_in_permanent_page
+    description: Permanent page does not contain TODO, unresolved unknown markers, TRACE, OQ or CONFLICT IDs.
+    forbidden:
+      - TODO
+      - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+      - TRACE-
+      - OQ-
+      - CONFLICT-
+  - id: INT-GATE-007
+    check: no_unsupported_runtime_claims
+    description: SLA, timeout, retry, fallback, auth and runtime targets are present only when backed by evidence.
+
+warningChecks:
+  - id: INT-WARN-001
+    check: timeout_retry_without_evidence
+    description: Timeout, retry, fallback or SLA are present but evidence is weak.
+  - id: INT-WARN-002
+    check: canonical_example_not_followed
+    description: Section order or table granularity significantly differs from canonical protocol example.
+  - id: INT-WARN-003
+    check: data_mapping_missing_or_too_shallow
+    description: Field mapping is absent or less detailed than canonical example, and no working-layer gap explains why.
+  - id: INT-WARN-004
+    check: examples_are_not_realistic
+    description: Examples contain placeholders or unrealistic values instead of realistic UUIDs, dates and domain values.
+  - id: INT-WARN-005
+    check: boundary_case_missing
+    description: Boundary or empty-result behavior is missing where canonical example requires it.
+
+decision:
+  approved:
+    condition: No blocking checks failed.
+  approved-with-warnings:
+    condition: No blocking checks failed, at least one warning remains.
+  needs-rework:
+    condition: One or more blocking checks failed.

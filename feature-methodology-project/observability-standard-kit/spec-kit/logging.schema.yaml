@@ -1,0 +1,93 @@
+artifact: logging
+description: Contract for feature logging documentation (section 8.1).
+language: ru
+canonicalExample: observability-standard-kit/examples/account-transfer-logging-example.md
+sourceStandardSection: "8.1 Логирование"
+
+documentTitle:
+  pattern: "^#### Логирование — .+$"
+
+requiredSections:
+  - Уровни логирования
+  - Таблица событий для логирования
+  - Структура полей лога (автоматические)
+  - Структура полей лога (прикладные)
+  - Gaps и допущения
+
+logLevels:
+  columns:
+    - Уровень
+    - Когда использовать
+    - Обязательные поля
+  requiredLevels:
+    - ERROR
+    - WARN
+    - INFO
+    - DEBUG
+
+eventsTable:
+  title: Таблица событий для логирования
+  columns:
+    - Журнал
+    - Уровень
+    - Логируемые параметры
+    - Правила инициализации события
+    - Статус
+  journalTypes:
+    - Интеграционный журнал
+    - Системный журнал
+    - Бизнес-журнал
+  integrationLogFields:
+    - eventType
+    - callType
+    - exSystem
+
+automaticFieldsTable:
+  columns:
+    - Атрибут
+    - Описание
+    - Обязательность
+    - Пример
+    - Источник
+    - Статус
+  requiredAttributes:
+    - "@timestamp"
+    - callid
+    - requestId
+    - sessionId
+    - ucpid
+    - service
+    - system
+    - environment
+
+applicationFieldsTable:
+  columns:
+    - Атрибут
+    - Описание
+    - Обязательность
+    - Пример
+    - Источник
+    - Статус
+  requiredAttributes:
+    - eventType
+    - callType
+    - exSystem
+    - level
+    - message
+
+jsonSourceSchema:
+  format: JSON
+  note: Полный перечень полей _source — см. стандарт 8.1; в артефакте — таблицы automatic + application
+
+traceability:
+  - callid mandatory in all logs
+  - rqStr/rsStr AS IS for integration calls when applicable
+  - duration in ms for integration
+
+clarificationBeforeFinalArtifact:
+  mandatory: true
+  mustAsk:
+    - list of integrations and business events
+    - eventType naming convention
+    - whether rqStr/rsStr logged for each call
+    - PII masking in logs

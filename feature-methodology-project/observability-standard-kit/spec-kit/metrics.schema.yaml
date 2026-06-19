@@ -1,0 +1,83 @@
+artifact: metrics
+description: Contract for feature metrics documentation (section 8.2).
+language: ru
+canonicalExample: observability-standard-kit/examples/account-transfer-metrics-example.md
+sourceStandardSection: "8.2 Метрики"
+
+documentTitle:
+  pattern: "^#### Метрики — .+$"
+
+requiredSections:
+  - Технические метрики
+  - Метрики ошибок
+  - Бизнес-метрики
+  - Фронтовые метрики
+  - Gaps и допущения
+
+technicalMetrics:
+  title: Технические метрики
+  columns:
+    - Название метрики (Prometheus)
+    - Тип
+    - Описание
+    - Labels
+    - Статус
+  standardCounters:
+    - requests_total
+    - request_duration_seconds
+    - active_requests
+  optionalGauges:
+    - db_connections
+
+errorMetrics:
+  title: Метрики ошибок
+  columns:
+    - Название метрики (Prometheus)
+    - Тип
+    - Описание
+    - Статус
+
+businessMetrics:
+  title: Бизнес-метрики
+  columns:
+    - Название метрики (Prometheus)
+    - Тип
+    - Описание
+    - Формула расчёта
+    - Статус
+
+frontendMetrics:
+  title: Фронтовые метрики
+  columns:
+    - №
+    - Название события
+    - Параметры
+    - Описание события
+    - Статус
+  parametersNestedTable:
+    columns:
+      - Параметр
+      - Описание
+      - Значение
+  eventDurationIntervals:
+    - '"0-100"'
+    - '"100-200"'
+    - '"200-300"'
+    - '"300-400"'
+    - '"400-500"'
+    - '">5000"'
+
+prometheusNaming:
+  pattern: "<service>_<metric>_<unit>"
+  types:
+    - Counter
+    - Gauge
+    - Histogram
+
+clarificationBeforeFinalArtifact:
+  mandatory: true
+  mustAsk:
+    - service name prefix for metrics
+    - endpoints/methods for labels
+    - business KPIs to expose
+    - UI analytics events list

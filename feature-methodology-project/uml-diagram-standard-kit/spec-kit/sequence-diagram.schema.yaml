@@ -1,0 +1,269 @@
+artifact: sequence-diagram
+description: Contract for UML Sequence Diagram documentation.
+language: ru
+
+canonicalExample: uml-diagram-standard-kit/examples/sequence-diagram-example.md
+sourceStandardSection: "2.4.1 Требования к Sequence Diagram"
+
+requiredSections:
+  - Диаграмма
+  - Назначение
+  - Участники
+  - PlantUML
+  - Легенда
+  - Соответствие тексту
+  - Gaps и допущения
+
+requiredPlantUmlElements:
+  - "@startuml"
+  - title
+  - caption
+  - actor_or_participant
+  - messages
+  - legend
+  - "@enduml"
+
+participants:
+  allowedKinds:
+    - actor
+    - participant
+    - boundary
+    - control
+    - entity
+    - database
+    - queue
+    - collections
+  requiredForEach:
+    - name
+    - alias
+    - role
+
+arrows:
+  synchronous:
+    plantUml: "A -> B: message"
+    useFor:
+      - REST API
+      - gRPC Unary
+      - blocking call
+  asynchronous:
+    plantUml: "A ->> B: message"
+    useFor:
+      - Kafka publish
+      - queue send
+      - non-blocking notification
+  response:
+    plantUml: "B --> A: response"
+    requiredContent:
+      - status_or_return_type
+  create:
+    plantUml: "A -> B **: create"
+  destroy:
+    plantUml: "A -> B !!: destroy"
+
+combinedFragments:
+  allowed:
+    - alt
+    - opt
+    - loop
+    - par
+    - break
+    - ref
+  requiredWhen:
+    alt: Ветвление по условию
+    opt: Необязательный шаг
+    loop: Повторяющиеся действия
+    par: Одновременные вызовы
+    break: Выход из сценария при ошибке
+    ref: Ссылка на другую диаграмму
+
+messageLabels:
+  required:
+    - operation_or_method_name
+    - step_number
+  optional:
+    - key_parameters
+  examples:
+    - "1. createOrder(orderId, amount)"
+    - "1.1 validateRequest()"
+
+activationRules:
+  requiredForSynchronousCalls: true
+  forbiddenForPureAsyncCalls: true
+  everyActivateHasDeactivate: true
+  noOpenActivationAtDiagramEnd: true
+  onlyActorMaySendWithoutActivation: true
+  participantsRequireLiveLifelineForAllSyncMessages: true
+  syncCallMustUsePlusOnCallee: true
+  syncReturnMustUseMinusWhenClosingCallee: true
+  activateFrontendImmediatelyAfterUserAction: true
+  autoActivationAllowed:
+    - "A -> B ++: message"
+    - "B --> A --: response"
+    - return
+  explicitDeactivateAllowedWhen:
+    - complex_alt_loop_par_branches
+    - nested_sync_calls
+    - frontend_wait_scope
+
+lifelineRules:
+  mandatoryAuditBeforeSubmit: true
+  auditChecks:
+    - every_plus_has_matching_minus_or_deactivate
+    - every_activate_has_deactivate
+    - sync_request_response_pairs_balanced_on_callee
+    - no_orphan_activation_at_diagram_end
+    - fragment_branches_do_not_leave_open_activations
+    - fragment_merge_point_consistent_activation_state
+    - sequential_alt_blocks_do_not_assume_stale_activation
+    - nested_activations_close_inside_out
+    - caller_activation_matches_wait_scope
+    - actor_not_left_active_without_reason
+    - par_join_before_parent_activation_close
+    - ui_continuation_inside_same_success_operand
+    - every_message_source_and_target_lifelines_live
+    - activation_opened_inside_operand_that_uses_it
+  commonAntiPatterns:
+    - frontend_lifeline_not_closed_after_backend_response
+    - backend_activation_open_only_in_success_branch
+    - error_return_without_closing_callee_activation
+    - async_call_uses_blocking_activation
+    - backend_closed_in_first_alt_operand_then_reused_in_next_alt_without_reopen
+    - post_response_ui_in_separate_top_level_alt_after_callee_deactivated
+    - internal_subprocess_only_as_note_without_group_or_self_call_activation
+    - parent_activation_closed_inside_one_par_branch_before_merge
+    - downstream_call_from_dead_lifeline_after_sibling_operand_closed_activation
+    - return_to_dead_lifeline
+    - activation_opened_before_alt_but_only_sibling_operand_uses_it
+    - participant_sends_without_activation_except_actor
+    - sync_call_without_plus_on_callee
+    - fe_reply_without_activate_after_user_action
+    - arrow_to_empty_backend_on_client_timeout
+    - return_from_empty_backend_lifeline
+  recommendedPatterns:
+    syncPair: "Caller -> Callee ++: request\nCallee --> Caller --: response"
+    nestedSync: "Caller -> Service ++: request\nService -> Database ++: query\nDatabase --> Service --: result\nService --> Caller --: response"
+    frontendWait: "activate Frontend\nFrontend -> Backend ++: request\nBackend --> Frontend --: response\ndeactivate Frontend"
+    altScope: "alt branch A and branch B both close callee before fragment end; continuation stays inside success operand"
+    groupedSubprocess: "group [Service] subprocess label\n  Service -> Dep ++: call\n  Dep --> Service --: result\n  Service -> Service ++: internalStep()\n  return\nend"
+    liveLifelineInAlt: "alt success\n  activate FE\n  FE -> Backend ++: request\n  Backend --> FE --: response\n  FE --> User: render\nelse client timeout\n  activate FE\n  FE -> FE ++: awaitBackendResponse(timeout)\n  FE -> FE --: timeout\n  FE --> User: error\nend"
+    clientSideTimeout: "activate FE\nFE -> FE ++: awaitBackendResponse(timeout)\nFE -> FE --: timeout\nFE --> User: error"
+
+liveLifelineRules:
+  mandatoryAuditBeforeSubmit: true
+  mandatoryAuditMode: message_by_message
+  definitions:
+    live: participant has open activation bar for current processing scope
+    empty: participant has no activation bar at message timestamp
+    dead: participant activation was already closed
+  onlyActorMaySendFromEmptyLifeline: true
+  participantsForbiddenFromEmptyLifeline:
+    - participant
+    - boundary
+    - control
+    - entity
+    - database
+    - queue
+  rules:
+    - only_actor_may_send_without_activation
+    - every_participant_outbound_requires_live_source
+    - every_sync_call_opens_callee_with_plus
+    - plain_arrow_without_plus_forbidden_between_participants
+    - every_sync_return_requires_live_source_and_live_target
+    - no_arrow_from_dead_lifeline
+    - no_arrow_to_empty_or_dead_lifeline
+    - no_return_from_empty_lifeline
+    - client_side_timeout_without_backend_arrow_when_backend_never_activated
+    - activate_frontend_immediately_after_user_to_frontend
+    - open_activation_inside_operand_that_performs_work
+  forbiddenPatterns:
+    - FE_to_Backend_without_plus
+    - FE_from_Backend_return_when_Backend_not_live
+    - FE_reply_to_User_without_activate_FE
+    - participant_message_without_activation_except_actor
+    - arrow_to_empty_backend_with_note_inactive
+  auditPerMessage:
+    - is_source_actor_or_live
+    - does_sync_call_use_plus_on_callee
+    - is_target_live_on_return
+    - is_source_live_on_return
+    - would_plantuml_show_arrow_on_activation_bar
+
+nestedSubprocessRules:
+  useGroupWhen:
+    - participant_has_bounded_internal_subprocess
+    - parallel_fetch_and_merge_on_same_service
+    - validation_or_mapping_pipeline_inside_service
+  useRefWhen:
+    - subprocess_documented_on_separate_diagram
+    - subprocess_is_large_and_reused
+  useStackedSelfCallWhen:
+    - internal_step_on_same_lifeline
+    - merge_map_validate_on_same_service
+  plantUml:
+    group: "group [label] ... end"
+    ref: "ref over A, B : ProcessName"
+    selfCallActivation: "A -> A ++: step\nreturn"
+
+stackedActivationRules:
+  sourceStandardReference: nested activations and lifecycle management in Sequence Diagram standard
+  eachPlusAddsLevel: true
+  returnClosesCurrentLevel: true
+  closeInnerBeforeOuterReturn: true
+  selfCallCreatesNestedBarOnSameLifeline: true
+
+traceabilityTable:
+  columns:
+    - Элемент на диаграмме
+    - Номер
+    - Описание в тексте
+
+clarificationRequirements:
+  mustAskBeforeDraft:
+    - participant_names_and_aliases
+    - operation_endpoint_method_event_names_per_message
+    - sync_or_async_mode_per_message
+    - protocol_per_hop
+    - parallel_branch_semantics
+    - error_handling_per_hop
+    - partial_or_degraded_response_rules
+    - aggregation_or_mapping_rules
+  errorHandlingQuestions:
+    - validation_errors
+    - business_errors
+    - technical_errors
+    - timeout_and_retry
+    - invalid_or_malformed_response
+    - semantically_wrong_response
+    - source_unavailable_in_parallel_flow
+    - total_failure_vs_partial_response
+    - user_visible_error_behavior
+  mustModelWhenKnown:
+    - alt_opt_loop_break_fragments
+    - error_returns_with_status_or_type
+
+forbiddenInFinalArtifact:
+  - TODO
+  - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+  - "СТД-"
+
+qualityRules:
+  - Перед draft заданы уточнения по участникам, именам взаимодействий, sync/async, ошибкам, retry, timeout и invalid response, если эти данные не были известны.
+  - Если error behavior подтвержден, alternative paths показаны на диаграмме через alt/opt/loop/break.
+  - Участники соответствуют источнику и имеют понятные роли.
+  - Синхронные, асинхронные вызовы и ответы используют правильные стрелки.
+  - Ответы содержат статус или тип результата.
+  - Фреймы alt/opt/loop/par/break/ref используются только при соответствующем поведении.
+  - Синхронные вызовы имеют корректные activation bars.
+  - Линии жизни и activation bars сбалансированы: нет висящих activations в конце диаграммы.
+  - Каждый sync request/response pair закрывает activation callee.
+  - Activation Frontend/Client соответствует периоду ожидания и обработки ответа.
+  - На merge-point каждого alt/opt/loop/par все operands оставляют участников в одинаковом activation state.
+  - Последовательные alt-блоки не продолжают тот же request на участнике, чья activation уже закрыта без reopen.
+  - UI render и финальные user messages находятся в success operand того же alt, где получен финальный backend response.
+  - Внутренний bounded subprocess сервиса показан через group/ref и/или stacked self-call activations.
+  - Каждое сообщение исходит из live lifeline и приходит в live lifeline; нет стрелок из/в «мертвую» или пустую линию жизни.
+  - Только actor может отправлять сообщение без activation bar; Frontend/Backend/Service — всегда live.
+  - Каждый sync-вызов между participant использует `++` на callee; plain `->` без `++` запрещён.
+  - После `User -> FE` сразу `activate FE` перед любым `FE --> User` или `FE -> ...`.
+  - Client-side timeout, когда Backend не принял запрос, моделируется через `FE -> FE ++` / `--`, без стрелок на пустой Backend.
+  - Каждый numbered message соответствует текстовому шагу.

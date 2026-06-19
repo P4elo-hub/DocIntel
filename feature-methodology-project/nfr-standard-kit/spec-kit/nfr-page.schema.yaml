@@ -1,0 +1,108 @@
+artifact: nfr-page
+description: Umbrella contract for non-functional requirements of a feature.
+language: ru
+sourceStandardSection: "7. Стандарты нефункциональных требований"
+
+domains:
+  - id: performance
+    label: Производительность
+    spec: nfr-standard-kit/spec-kit/performance.schema.yaml
+    template: nfr-standard-kit/templates/performance.template.md
+    canonicalExample: nfr-standard-kit/examples/account-transfer-performance-example.md
+    qualityGate: nfr-standard-kit/quality-gates/performance-review.yaml
+  - id: reliability
+    label: Надёжность
+    spec: nfr-standard-kit/spec-kit/reliability.schema.yaml
+    template: nfr-standard-kit/templates/reliability.template.md
+    canonicalExample: nfr-standard-kit/examples/account-transfer-reliability-example.md
+    qualityGate: nfr-standard-kit/quality-gates/reliability-review.yaml
+  - id: security
+    label: Безопасность
+    spec: nfr-standard-kit/spec-kit/security.schema.yaml
+    template: nfr-standard-kit/templates/security.template.md
+    canonicalExample: null
+    qualityGate: nfr-standard-kit/quality-gates/security-review.yaml
+  - id: configuration
+    label: Настройки и конфигурация
+    spec: nfr-standard-kit/spec-kit/configuration.schema.yaml
+    template: nfr-standard-kit/templates/configuration.template.md
+    canonicalExample: nfr-standard-kit/examples/account-transfer-configuration-example.md
+    qualityGate: nfr-standard-kit/quality-gates/configuration-review.yaml
+  - id: feature-toggles
+    label: Feature Toggles
+    spec: nfr-standard-kit/spec-kit/feature-toggles.schema.yaml
+    template: nfr-standard-kit/templates/feature-toggles.template.md
+    canonicalExample: nfr-standard-kit/examples/account-transfer-feature-toggles-example.md
+    qualityGate: nfr-standard-kit/quality-gates/feature-toggles-review.yaml
+
+documentTitle:
+  pattern: "^#### NFR — .+ \\(.+\\)$"
+  forbiddenInTitle:
+    - "Пример:"
+    - "СТД-"
+
+outputRules:
+  - Do not expose source standard IDs such as СТД-* in final reader-facing artifacts.
+  - Do not invent SLA, SLO, latency, RPS, CCU, cache TTL, config values, toggle keys or rollout thresholds without evidence.
+  - Canonical examples are authoritative for style and granularity only for their domain.
+  - Security domain has no canonical example in source standard section 7; fill from evidence.
+
+requiredWhenApplicable:
+  - performance
+  - reliability
+  - configuration
+  - feature-toggles
+
+conditionalDomains:
+  security: required when feature handles auth, roles, PII, payments, secrets or regulatory constraints
+
+clarificationPolicyRef: nfr-standard-kit/spec-kit/nfr-clarification.schema.yaml
+
+clarificationPolicy:
+  mode: clarification-first
+  defaultFirstResponse: questions-only
+  spec: nfr-standard-kit/spec-kit/nfr-clarification.schema.yaml
+  questionnaireTemplate: nfr-standard-kit/templates/nfr-clarification-questionnaire.template.md
+  rule: >
+    Финальные NFR-артефакты запрещены на первом коротком запросе без прохождения
+    обязательного опросника (см. nfr-clarification.schema.yaml).
+    Агент обязан задать вопросы по нагрузке, перцентилю (p85/p95), CCU, Rate Limit,
+    Throttling, Circuit Breaker, Bulkhead, кэшу, SLO и toggles — если домен выбран.
+  draftWithoutClarificationAllowedWhen:
+    - user explicitly requests draft
+    - user explicitly requests proceed without clarification
+    - user attaches SLO / load test / capacity / monitoring evidence
+    - user chooses greenfield DESIGN-NFR-*
+  mandatoryBeforeFinalArtifact:
+    - clarificationPassCompleted per nfr-clarification.schema.yaml
+    - explicit да/нет for rate_limit, throttling, circuit_breaker when performance in scope
+  forbiddenWithoutClarification:
+    - final NFR tables on first user message
+    - copying canonical transfer numeric targets without evidence
+    - inventing p85, RPS, CCU, breaker thresholds without evidence or DESIGN-NFR
+
+gapsAndAssumptions:
+  gapIdPattern: "GAP-NFR-[0-9]{3}"
+  assumptionIdPattern: "ASM-NFR-[0-9]{3}"
+  designIdPattern: "DESIGN-NFR-[0-9]{3}"
+  rules:
+    - Every unanswered mandatory clarification topic becomes GAP-NFR-NNN in working layer.
+    - Every inferred metric without user evidence becomes ASM-NFR-NNN unless DESIGN-NFR authorized.
+    - Final artifact must not contain vague «требует уточнения» without GAP ID in working layer.
+  inlineTraceability:
+    required: true
+    rule: >
+      Любое спроектированное или не уточнённое у пользователя значение (тогл, зависимость,
+      порог, endpoint, срок, «конфликтов нет») обязано иметь маркер **DESIGN-NFR-NNN** или
+      **GAP-NFR-NNN** в той же таблице (колонка «Статус») и строку в секции «Gaps и допущения»
+      с колонками: Где в документе | Что предположено | Подтверждено? | Как закрыть.
+    forbidden:
+      - stating toggle dependencies as fact without DESIGN-NFR or user confirmation
+      - empty «Gaps и допущения» when DESIGN-NFR markers appear in body
+
+qualityRules:
+  - Агент задаёт обязательные уточняющие вопросы до финального NFR (clarification-first).
+  - Вопросы группируются по доменам: performance, reliability, security, configuration, feature-toggles.
+  - Rate Limiting, Throttling и Circuit Breaker всегда уточняются явно (да/нет/параметры) для performance.
+  - Перцентиль latency (p85/p95/p99) и условия измерения уточняются для каждой операции в scope.
+  - Пиковая нагрузка (RPS, множитель, окно) уточняется до заполнения таблиц throughput.

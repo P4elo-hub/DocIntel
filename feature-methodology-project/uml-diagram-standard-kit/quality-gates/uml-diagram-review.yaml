@@ -1,0 +1,84 @@
+gate: uml-diagram-review
+description: General quality gate for UML diagrams aligned with common diagram requirements.
+scope: uml-diagram
+spec: uml-diagram-standard-kit/spec-kit/uml-diagram.schema.yaml
+
+blockingChecks:
+  - id: UML-GATE-001
+    check: diagram_type_selected
+    description: Diagram type is selected and matches the situation: Sequence, Activity or State.
+  - id: UML-GATE-002
+    check: required_sections_present
+    description: Artifact contains diagram title, purpose, context, PlantUML, legend and traceability to text.
+  - id: UML-GATE-003
+    check: plantuml_block_valid
+    description: PlantUML block starts with @startuml and ends with @enduml.
+  - id: UML-GATE-004
+    check: title_and_caption_present
+    description: Diagram contains title and caption.
+  - id: UML-GATE-005
+    check: legend_present
+    description: Diagram contains legend explaining notation, colors and special markers.
+  - id: UML-GATE-006
+    check: traceability_table_present
+    description: Numbered diagram elements are mapped to textual description.
+  - id: UML-GATE-007
+    check: no_unresolved_markers
+    description: Final artifact does not contain TODO, unresolved unknown markers or vague placeholders without GAP-UML IDs.
+    forbidden:
+      - TODO
+      - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+      - unknown
+      - "не указано"
+  - id: UML-GATE-008
+    check: no_unsupported_behavior_claims
+    description: Participants, calls, states, transitions, guards, retries, timings and markers are backed by evidence or marked as ASM-UML assumptions.
+  - id: UML-GATE-009
+    check: gaps_and_assumptions_table_present
+    description: Artifact contains `Gaps и допущения` table with ID, type, location, description and closure path.
+  - id: UML-GATE-010
+    check: all_gaps_have_ids
+    description: Missing required information is marked with precise GAP-UML-NNN IDs.
+  - id: UML-GATE-011
+    check: all_assumptions_have_ids
+    description: Inferred participants, operations, endpoints, topics, states, transitions, guards, timings and markers are marked with precise ASM-UML-NNN IDs.
+  - id: UML-GATE-012
+    check: gap_and_assumption_markers_have_rows
+    description: Every GAP-UML-* and ASM-UML-* marker used in the artifact has a row in `Gaps и допущения`.
+  - id: UML-GATE-013
+    check: critical_gaps_should_have_been_clarified
+    description: Artifact marked as final should not contain many unresolved ASM-UML assumptions that should have triggered clarification questions before drafting, unless user explicitly requested a draft.
+  - id: UML-GATE-014
+    check: error_paths_clarified_or_modeled
+    description: For interaction or parallel-flow diagrams, error/alternative paths were clarified before drafting and are modeled on the diagram when known, or explicitly captured as GAP-UML in a draft.
+
+warningChecks:
+  - id: UML-WARN-006
+    check: error_handling_not_clarified
+    description: Diagram shows interactions or parallel branches but error/fallback behavior was not clarified before drafting.
+  - id: UML-WARN-007
+    check: integration_names_not_confirmed
+    description: Operation, endpoint, method or event names were inferred instead of confirmed by the user or evidence.
+  - id: UML-WARN-001
+    check: storage_format_unclear
+    description: It is unclear whether the diagram will be stored as .puml and/or rendered as .svg.
+  - id: UML-WARN-002
+    check: diagram_too_broad
+    description: Diagram mixes several unrelated scenarios, processes or lifecycles.
+  - id: UML-WARN-003
+    check: legend_incomplete
+    description: Legend exists but does not explain all colors, markers or unusual notation.
+  - id: UML-WARN-004
+    check: numbering_partial
+    description: Some important elements are numbered but not mapped to text.
+  - id: UML-WARN-005
+    check: excessive_assumptions
+    description: Diagram relies on many ASM-UML assumptions and may need clarification before final use.
+
+decision:
+  approved:
+    condition: No blocking checks failed.
+  approved-with-warnings:
+    condition: No blocking checks failed, at least one warning remains.
+  needs-rework:
+    condition: One or more blocking checks failed.

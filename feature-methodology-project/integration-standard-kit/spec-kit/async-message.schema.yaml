@@ -1,0 +1,162 @@
+artifact: async-message
+description: Contract for asynchronous message or event documentation.
+language: ru
+
+canonicalExample: integration-standard-kit/examples/async-message-example.md
+sourceStandardSection: "4.7 Асинхронные интеграции; 4.8 Документирование API; 4.9 Примеры"
+
+requiredSections:
+  - Общая информация
+  - Consumer информация
+  - Kafka Headers
+  - Структура Envelope
+  - Параметры metadata
+  - Параметры payload
+  - Условия обязательности
+  - Enum sections
+  - Ключ партиционирования
+  - JSON Schema
+  - Happy Path
+  - Boundary / event variants
+  - Retry / DLQ behavior
+
+generalInfoTable:
+  columns:
+    - Параметр
+    - Значение
+  requiredRows:
+    - Назначение
+    - Система-источник
+    - Система-получатель
+    - Тип интеграции
+    - Протокол
+    - Направление
+    - Topic
+    - Partition Key
+    - Гарантия доставки
+    - Формат сериализации
+    - Версия схемы
+  conditionalRows:
+    - Число партиций
+    - Replication Factor
+    - Retention
+    - Стратегия совместимости
+
+requiredFields:
+  - topic
+  - partitionKey
+  - producer
+  - consumer
+  - schemaVersion
+  - deliveryGuarantee
+  - messageId
+  - correlationId
+  - eventType
+  - source
+
+consumerInfoColumns:
+  - Consumer
+  - Consumer Group
+  - Retry Policy
+  - DLQ Topic
+  - Идемпотентность
+
+allowedTransports:
+  - Kafka
+  - RabbitMQ
+  - JMS
+  - SQS
+  - file
+  - custom
+
+deliveryGuarantees:
+  - at-most-once
+  - at-least-once
+  - exactly-once
+  - unknown
+
+messageFieldColumns:
+  - Параметр
+  - Тип
+  - Обязат.
+  - Описание
+  - Валидация
+  - По умолч.
+  - Пример
+  - Маппинг
+
+metadataFields:
+  - messageId
+  - correlationId
+  - timestamp
+  - eventType
+  - version
+  - source
+
+metadataParameterColumns:
+  - Параметр
+  - Тип
+  - Обязат.
+  - Описание
+  - Валидация
+  - По умолч.
+  - Пример
+
+kafkaHeaderColumns:
+  - Header Key
+  - Обязат.
+  - Описание
+  - Пример
+
+conditionalRequiredColumns:
+  - Параметр
+  - Условие обязательности
+
+enumColumns:
+  - Значение
+  - Описание
+  - Когда публикуется
+
+partitionKeyColumns:
+  - Поле
+  - Тип
+  - Описание
+  - Влияние на порядок
+
+errorHandlingColumns:
+  - Ошибка
+  - Поведение
+  - Retry
+  - DLQ
+
+schemaRequirements:
+  required: true
+  supportedFormats:
+    - JSON Schema
+    - Avro Schema
+  requiredElements:
+    - Название / title
+    - Описание / description
+    - Тип данных / type
+    - Обязательные поля / required
+    - Описание полей / properties
+    - Версия схемы
+    - Стратегия совместимости
+
+exampleRequirements:
+  - Happy path event with topic, key and headers.
+  - Full event envelope example.
+  - Examples for significant event variants when one topic carries multiple eventType values.
+  - Boundary cases for nullable fields, empty arrays or optional branches when applicable.
+
+qualityRules:
+  - Не указывать delivery guarantee без evidence.
+  - Partition key обязателен только если источник подтверждает партиционирование.
+  - Retry и DLQ описывать только при наличии конфигурации, кода, ADR или эксплуатационного источника.
+  - Envelope содержит `metadata` и `payload`, если проект не использует другой подтвержденный формат.
+  - Для Kafka указывать consumer group, retention, partition key и headers, если они есть в источниках.
+  - JSON Schema или Avro Schema обязательна для payload, если source стандарта требует schema registry.
+  - Metadata table must include `messageId`, `correlationId`, `timestamp`, `eventType`, `version`, `source`.
+  - Kafka headers duplicate routing/tracing metadata needed without payload deserialization.
+  - Conditional fields must have a separate condition table.
+  - Consumer idempotency key must be documented when consumer information is known.

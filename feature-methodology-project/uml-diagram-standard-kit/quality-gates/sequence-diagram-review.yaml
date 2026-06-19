@@ -1,0 +1,127 @@
+gate: sequence-diagram-review
+description: Sequence Diagram quality gate aligned with Sequence Diagram standards and canonical example.
+scope: sequence-diagram
+spec: uml-diagram-standard-kit/spec-kit/sequence-diagram.schema.yaml
+canonicalExample: uml-diagram-standard-kit/examples/sequence-diagram-example.md
+
+blockingChecks:
+  - id: SEQ-GATE-001
+    check: participants_documented
+    description: All actors, services, queues and external systems on the diagram are listed with roles.
+  - id: SEQ-GATE-002
+    check: arrow_notation_correct
+    description: Synchronous calls, asynchronous calls and returns use correct arrows.
+  - id: SEQ-GATE-003
+    check: message_labels_complete
+    description: Message labels include operation/method name and step number.
+  - id: SEQ-GATE-004
+    check: returns_have_status_or_type
+    description: Return messages contain a status, error or returned value type.
+  - id: SEQ-GATE-005
+    check: activation_bars_balanced
+    description: Synchronous calls use activation bars and every activation is closed.
+  - id: SEQ-GATE-005A
+    check: lifelines_balanced_at_diagram_end
+    description: At diagram end no participant keeps an open activation bar unless intentionally still processing.
+  - id: SEQ-GATE-005B
+    check: sync_request_response_pairs_close_callee
+    description: Every synchronous request opened with ++ or activate on callee is closed by matching --, return or deactivate on that callee.
+  - id: SEQ-GATE-005C
+    check: caller_activation_matches_process
+    description: Frontend/Client/BFF activation lifecycle matches the period when it waits for or processes a synchronous response; no dangling caller lifeline after UI update.
+  - id: SEQ-GATE-005D
+    check: fragment_branches_close_activations
+    description: alt, loop, opt, par and break branches do not leave activations open in only some branches.
+  - id: SEQ-GATE-005E
+    check: nested_activations_close_inside_out
+    description: Nested synchronous calls close inner activations before outer return closes the outer activation.
+  - id: SEQ-GATE-005F
+    check: fragment_merge_point_activation_consistent
+    description: At the end of each alt/opt/loop/par fragment, all operands leave each participant in the same activation state; no operand closes callee while sibling operand leaves it open or continues processing.
+  - id: SEQ-GATE-005G
+    check: no_sequential_alt_activation_drift
+    description: A later alt/opt block does not continue the same request on a participant whose activation was already closed in an earlier alt without reopening it.
+  - id: SEQ-GATE-005H
+    check: post_response_steps_in_same_success_operand
+    description: UI render, final user messages and post-response processing stay inside the success operand that received the final backend response, not in a separate top-level alt after callee deactivation.
+  - id: SEQ-GATE-005I
+    check: bounded_subprocess_modeled
+    description: Bounded internal subprocess on a service uses group/ref and/or stacked self-call activations instead of only free-form notes.
+  - id: SEQ-GATE-005J
+    check: par_join_before_parent_close
+    description: Parent activation for a request remains open until all par branches and merge/aggregation complete; parent is not closed inside one par branch only.
+  - id: SEQ-GATE-005K
+    check: live_lifeline_continuity
+    description: Every message starts from and arrives at a live lifeline; no synchronous arrow from dead/empty participant lifeline and no arrow to empty/dead participant lifeline.
+  - id: SEQ-GATE-005L
+    check: activation_opened_in_using_operand
+    description: In alt/opt/loop, callee activation for request processing is opened inside the operand that performs the work, not before the fragment when a sibling operand closes the same participant.
+  - id: SEQ-GATE-005M
+    check: client_side_timeout_without_empty_backend_arrows
+    description: When Backend never accepted the request, timeout/retry is modeled on live Frontend via self-call or note; no FE->Backend or FE<--Backend arrows to empty Backend lifeline.
+  - id: SEQ-GATE-005N
+    check: only_actor_sends_without_activation
+    description: Only actor may send a message without open activation; Frontend, Backend and all services must be live when sending or receiving sync messages/returns.
+  - id: SEQ-GATE-005O
+    check: sync_call_uses_plus_on_callee
+    description: Every synchronous call between participants uses A -> B ++; plain A -> B without ++ is forbidden.
+  - id: SEQ-GATE-005P
+    check: frontend_activate_after_user_action
+    description: After User -> FE, activate FE before any FE --> User, FE -> Backend ++, or FE -> FE ++ message.
+  - id: SEQ-GATE-005Q
+    check: sync_return_endpoints_live
+    description: Every return Callee --> Caller -- has live callee at send and live caller at receive.
+  - id: SEQ-GATE-006
+    check: async_activation_not_misused
+    description: Pure asynchronous calls do not incorrectly block the caller or require return activation.
+  - id: SEQ-GATE-007
+    check: fragments_valid
+    description: alt, opt, loop, par, break and ref fragments are used only when the scenario requires them.
+  - id: SEQ-GATE-008
+    check: sequence_traceability_complete
+    description: Numbered interactions correspond to textual scenario steps.
+  - id: SEQ-GATE-009
+    check: sequence_legend_complete
+    description: Legend explains arrows, activation bars, colors and change markers used in the diagram.
+  - id: SEQ-GATE-010
+    check: no_source_standard_ids
+    description: Final example does not expose source standard IDs.
+    forbidden:
+      - "СТД-"
+  - id: SEQ-GATE-011
+    check: error_paths_modeled_when_known
+    description: When error, retry, timeout or invalid-response behavior is confirmed, alternative paths are shown with alt/opt/loop/break rather than omitted.
+
+warningChecks:
+  - id: SEQ-WARN-001
+    check: missing_phases
+    description: Complex sequence does not group messages into phases with == section labels.
+  - id: SEQ-WARN-002
+    check: broad_alt_condition
+    description: alt/else conditions are too vague to test.
+  - id: SEQ-WARN-003
+    check: participant_alias_unclear
+    description: Participant aliases are not readable or not used consistently.
+  - id: SEQ-WARN-004
+    check: error_handling_not_modeled
+    description: Parallel or multi-hop interaction exists but error/fallback behavior was not clarified or shown.
+  - id: SEQ-WARN-005
+    check: operation_names_inferred
+    description: Endpoint, method or event names appear inferred rather than confirmed.
+  - id: SEQ-WARN-006
+    check: explicit_deactivate_missing_in_complex_fragment
+    description: Complex alt/loop/par fragment may need explicit deactivate because automatic -- is insufficient.
+  - id: SEQ-WARN-007
+    check: ref_frame_missing_for_large_subprocess
+    description: Large reusable subprocess may be better extracted to ref over group.
+  - id: SEQ-WARN-008
+    check: message_by_message_lifeline_walk_not_documented
+    description: Complex sequence may benefit from explicit per-message live lifeline audit notes during review.
+
+decision:
+  approved:
+    condition: No blocking checks failed.
+  approved-with-warnings:
+    condition: No blocking checks failed, at least one warning remains.
+  needs-rework:
+    condition: One or more blocking checks failed.

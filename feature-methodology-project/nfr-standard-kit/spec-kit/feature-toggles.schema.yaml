@@ -1,0 +1,110 @@
+artifact: feature-toggles
+description: Contract for feature toggle documentation.
+language: ru
+canonicalExample: nfr-standard-kit/examples/account-transfer-feature-toggles-example.md
+sourceStandardSection: "7.5 Feature Toggles"
+clarificationPolicyRef: nfr-standard-kit/spec-kit/nfr-clarification.schema.yaml
+clarificationBeforeFinalArtifact:
+  mandatory: true
+
+documentTitle:
+  pattern: "^#### NFR — .+ \\(Feature Toggles\\)$"
+
+requiredSectionsPerToggle:
+  - Карточка тогла
+  - Поведение при ON/OFF
+  - Зависимости
+  - План удаления
+  - Чек-лист верификации после раскатки
+
+toggleCard:
+  columns:
+    - Параметр
+    - Значение
+  requiredRows:
+    - Название (ключ)
+    - Описание
+    - Тип
+    - Владелец
+    - Дата создания
+    - Планируемая дата удаления
+    - Значение по умолчанию
+    - Стратегия раскатки
+
+toggleTypes:
+  - Release toggle
+  - Experiment toggle
+  - Ops toggle
+  - Permission toggle
+
+behaviorTable:
+  columns:
+    - Состояние
+    - Поведение
+    - UI
+    - API
+
+dependencyTypes:
+  - requires
+  - conflicts
+  - includes
+
+dependenciesTable:
+  columns:
+    - Тогл
+    - Зависит от
+    - Тип
+    - Описание
+    - Статус
+  statusColumn:
+    required: true
+    values:
+      - Подтверждено
+      - DESIGN-NFR-NNN
+      - GAP-NFR-NNN
+    rule: >
+      Каждая строка зависимости без явного подтверждения пользователя или evidence
+      обязана ссылаться на DESIGN-NFR-* или GAP-NFR-* и иметь строку в Gaps и допущения.
+  emptyDependenciesRow:
+    allowed: true
+    mustMarkAs: DESIGN-NFR
+    note: Строка «конфликтов нет» — только как допущение, если не спрашивалось
+
+gapsAndAssumptions:
+  title: Gaps и допущения
+  required: true
+  columns:
+    - ID
+    - Тип
+    - Где в документе
+    - Что предположено / не уточнялось
+    - Подтверждено?
+    - Как закрыть
+  inlineMarkerRule: >
+    В теле артефакта каждое спроектированное значение помечается **DESIGN-NFR-NNN**
+    или **GAP-NFR-NNN** в той же строке таблицы (колонка «Статус» или сноска в ячейке).
+  confirmedMarker: Подтверждено — вы / evidence
+
+removalPlanTable:
+  columns:
+    - Этап
+    - Действие
+    - Ответственный
+    - Срок
+
+verificationChecklist:
+  columns:
+    - Метрика
+    - Порог (OK → продолжить)
+    - Порог (Rollback → выключить тогл)
+    - Источник
+    - Период наблюдения
+  note: >
+    Таблица заполняется перед раскаткой. После каждого этапа rollout —
+    go/no-go: при попадании хотя бы одной метрики в Rollback тогл выключается.
+
+rolloutStrategies:
+  - Boolean
+  - Block rollout
+  - User segment
+  - Canary

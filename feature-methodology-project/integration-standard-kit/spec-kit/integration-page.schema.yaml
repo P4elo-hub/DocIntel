@@ -1,0 +1,112 @@
+artifact: integration-page
+description: Contract for a reader-facing integration page.
+language: ru
+
+canonicalExamples:
+  REST: integration-standard-kit/examples/rest-integration-example.md
+  gRPC: integration-standard-kit/examples/grpc-service-example.md
+  GraphQL: integration-standard-kit/examples/graphql-operation-example.md
+  SOAP: integration-standard-kit/examples/soap-operation-example.md
+  Kafka: integration-standard-kit/examples/async-message-example.md
+
+requiredSections:
+  - Назначение
+  - Кратко
+  - Текущее поведение
+  - Участники интеграции
+  - Контракт
+  - Данные и маппинг
+  - Ошибки и исключения
+  - Таймауты, retry и fallback
+  - Связанные разделы
+
+requiredFrontMatter:
+  - pageEvidencePack
+  - sourceSlices
+  - sourceMap
+
+requiredTables:
+  generalInfo:
+    title: Общая информация
+    columns:
+      - Параметр
+      - Значение
+    requiredRows:
+      - Назначение
+      - Система-источник
+      - Система-получатель
+      - Тип интеграции
+      - Протокол
+      - Направление
+  participants:
+    title: Участники интеграции
+    columns:
+      - Система
+      - Роль
+      - Что передает
+      - Что получает
+  contract:
+    title: Контракт
+    columns:
+      - Метод / операция / topic
+      - Назначение
+      - Producer
+      - Consumer
+  mapping:
+    title: Данные и маппинг
+    columns:
+      - Источник
+      - Поле источника
+      - Получатель
+      - Поле получателя
+      - Правило
+  errors:
+    title: Ошибки и исключения
+    columns:
+      - Условие
+      - Ответ / статус
+      - Поведение системы
+      - Evidence
+
+allowedIntegrationTypes:
+  - synchronous
+  - asynchronous
+  - bidirectional
+  - batch
+
+allowedProtocols:
+  - REST
+  - gRPC
+  - GraphQL
+  - SOAP
+  - Kafka
+  - RabbitMQ
+  - HTTP
+  - WebSocket
+  - file
+  - batch
+
+forbiddenInPermanentPage:
+  - "[ТРЕБУЕТ УТОЧНЕНИЯ"
+  - "TODO"
+  - "TRACE-"
+  - "OQ-"
+  - "CONFLICT-"
+  - "Evidence / Traceability"
+
+qualityRules:
+  - У каждого содержательного утверждения есть evidence в рабочем слое.
+  - Не указывать SLA, timeout, retry, fallback, auth и runtime target без источника.
+  - Если field-level mapping не восстановлен, явно ограничить детализацию в рабочем плане, а не в читательской странице.
+  - Protocol-specific spec must be applied together with this general page spec.
+  - If the integration is synchronous, apply REST/gRPC/GraphQL/SOAP sync parameter requirements where relevant.
+  - If the integration is asynchronous, apply async envelope/header/schema requirements.
+  - Canonical examples are normative for section order and table granularity unless project-specific evidence requires a narrower page.
+
+protocolSpecMapping:
+  REST: spec-kit/rest-api.schema.yaml
+  gRPC: spec-kit/grpc-service.schema.yaml
+  GraphQL: spec-kit/graphql-operation.schema.yaml
+  SOAP: spec-kit/soap-operation.schema.yaml
+  Kafka: spec-kit/async-message.schema.yaml
+  RabbitMQ: spec-kit/async-message.schema.yaml
