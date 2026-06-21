@@ -2,6 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from structlog.contextvars import bind_contextvars
 
 from app.deps.providers import LLMServiceDep
 from app.schemas.chat import ChatRequest, ChatResponse
@@ -24,6 +25,8 @@ BATCH_MAX = 20
     },
 )
 async def chat_completions(req: ChatRequest, service: LLMServiceDep) -> ChatResponse:
+    if req.user_id:
+        bind_contextvars(user_id=req.user_id)
     return await service.complete(req)
 
 

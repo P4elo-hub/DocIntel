@@ -1,9 +1,7 @@
-import logging
-import time
-import uuid
+import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,7 +13,6 @@ except ImportError:
     Redis = None  # type: ignore
 
 from app.core.config import get_settings
-from app.services.docintel import ToolCallClient
 from app.core.exceptions import (
     LLMAuthError,
     LLMContentFilterError,
@@ -23,15 +20,19 @@ from app.core.exceptions import (
     LLMRateLimitError,
     LLMTimeoutError,
 )
+from app.observability.logging import get_logger, observability_middleware, setup_logging
+from app.observability.tracing import setup_tracing
 from app.routers import chat, features, health, models
-
-logger = logging.getLogger("llm-service")
-logging.basicConfig(level=logging.INFO)
+from app.services.docintel import ToolCallClient
 
 settings = get_settings()
+setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
+logger = get_logger()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_tracing()
 
     app.state.llm = AsyncOpenAI(
         api_key=settings.llm.openai_api_key.get_secret_value(),
@@ -43,13 +44,13 @@ async def lifespan(app: FastAPI):
     try:
         app.state.docintel_client = ToolCallClient(settings=settings, provider="primary")
         logger.info(
-            "DocIntel ready backend=%s model=%s fallback=%s",
-            app.state.docintel_client.backend,
-            app.state.docintel_client.model,
-            settings.docintel.fallback_backend,
+            "docintel_ready",
+            backend=app.state.docintel_client.backend,
+            model=app.state.docintel_client.model,
+            fallback=settings.docintel.fallback_backend,
         )
     except Exception as e:
-        logger.warning("DocIntel недоступен (%s) — /features/* вернут 503", e)
+        logger.warning("docintel_unavailable", error=str(e))
 
     app.state.redis = None
     if Redis is not None:
@@ -58,7 +59,7 @@ async def lifespan(app: FastAPI):
             await redis_client.ping()
             app.state.redis = redis_client
         except Exception as e:
-            logger.warning("Redis недоступен (%s) — продолжаем без кеша", e)
+            logger.warning("redis_unavailable", error=str(e))
 
     yield
 
@@ -76,6 +77,9 @@ async def lifespan(app: FastAPI):
             await app.state.redis.close()
         except Exception:
             pass
+    from app.observability.tracing import flush_tracing
+
+    flush_tracing()
 
 
 app = FastAPI(
@@ -90,37 +94,11 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-User-ID"],
     expose_headers=["X-Request-ID", "X-LLM-Cost-USD"],
 )
 
-
-@app.middleware("http")
-async def observability_middleware(request: Request, call_next):
-    request.state.request_id = request.headers.get("X-Request-ID", uuid.uuid4().hex)
-    request.state.llm_cost = 0.0
-    request.state.llm_tokens = 0
-
-    t0 = time.perf_counter()
-    try:
-        response = await call_next(request)
-    except Exception:
-        logger.exception("unhandled", extra={"request_id": request.state.request_id})
-        raise
-
-    duration_ms = (time.perf_counter() - t0) * 1000
-    response.headers["X-Request-ID"] = request.state.request_id
-    response.headers["X-LLM-Cost-USD"] = f"{request.state.llm_cost:.6f}"
-    logger.info(
-        "request method=%s path=%s status=%s duration_ms=%.2f request_id=%s",
-        request.method,
-        request.url.path,
-        response.status_code,
-        duration_ms,
-        request.state.request_id,
-    )
-    return response
-
+app.middleware("http")(observability_middleware)
 
 _STATUS_MAP: list[tuple[type[LLMError], int, str]] = [
     (LLMRateLimitError, 429, "llm_rate_limit"),
@@ -132,7 +110,7 @@ _STATUS_MAP: list[tuple[type[LLMError], int, str]] = [
 
 
 @app.exception_handler(LLMError)
-async def handle_llm_error(request: Request, exc: LLMError):
+async def handle_llm_error(request, exc: LLMError):
     for cls, status, code in _STATUS_MAP:
         if isinstance(exc, cls):
             return JSONResponse(
@@ -147,7 +125,7 @@ async def handle_llm_error(request: Request, exc: LLMError):
 
 
 @app.exception_handler(RequestValidationError)
-async def handle_validation(request: Request, exc: RequestValidationError):
+async def handle_validation(request, exc: RequestValidationError):
     errors = [
         {"field": ".".join(str(p) for p in e["loc"][1:]), "message": e["msg"]}
         for e in exc.errors()

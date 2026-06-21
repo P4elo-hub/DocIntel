@@ -12,9 +12,12 @@ services:
       - .env
     environment:
       REDIS_URL: redis://redis:6379/0
+      PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006/v1/traces
     depends_on:
       redis:
         condition: service_healthy
+      phoenix:
+        condition: service_started
     healthcheck:
       test:
         - CMD
@@ -38,5 +41,18 @@ services:
       timeout: 3s
       retries: 3
 
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: llm-phoenix
+    restart: unless-stopped
+    ports:
+      - "6006:6006"
+      - "4317:4317"
+    environment:
+      PHOENIX_WORKING_DIR: /data
+    volumes:
+      - phoenix-data:/data
+
 volumes:
   redis_data:
+  phoenix-data:

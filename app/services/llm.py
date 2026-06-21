@@ -1,5 +1,7 @@
+import time
 from collections.abc import AsyncIterator
 
+import structlog
 from tenacity import (
     retry,
     retry_if_not_exception_type,
@@ -14,6 +16,7 @@ from app.core.exceptions import (
     LLMRateLimitError,
     LLMTimeoutError,
 )
+from app.observability.pii import redact_pii_for_log
 from app.schemas.chat import ChatDelta, ChatRequest, ChatResponse, Usage
 from app.services.cache import CHAT_CACHE_PREFIX, chat_cache_key
 
@@ -28,12 +31,40 @@ try:
 except ImportError:
     APIConnectionError = APITimeoutError = AuthenticationError = BadRequestError = RateLimitError = ()  # type: ignore
 
+logger = structlog.get_logger("llm-service")
+
+
+def _prompt_text(req: ChatRequest) -> str:
+    return "\n".join(m.content for m in req.messages if m.content)
+
 
 class LLMService:
     def __init__(self, llm, cache, ttl: int = 3600):
         self.llm = llm
         self.cache = cache
         self.ttl = ttl
+
+    async def _log_llm_completion(
+        self,
+        req: ChatRequest,
+        resp: ChatResponse,
+        latency_ms: float,
+        *,
+        cached: bool = False,
+    ) -> None:
+        raw_prompt = _prompt_text(req)
+        prompt_digest, prompt_preview = await redact_pii_for_log(raw_prompt)
+        logger.info(
+            "llm_request_completed",
+            model=resp.model,
+            input_tokens=resp.usage.prompt_tokens,
+            output_tokens=resp.usage.completion_tokens,
+            latency_ms=round(latency_ms, 2),
+            finish_reason=resp.finish_reason,
+            prompt_hash=prompt_digest,
+            prompt_preview=prompt_preview,
+            cached=cached,
+        )
 
     @retry(
         stop=stop_after_attempt(3),
@@ -43,6 +74,7 @@ class LLMService:
         ),
     )
     async def _call(self, req: ChatRequest) -> ChatResponse:
+        t0 = time.perf_counter()
         try:
             raw = await self.llm.chat.completions.create(
                 model=req.model,
@@ -50,7 +82,7 @@ class LLMService:
                 temperature=req.temperature,
                 max_tokens=req.max_tokens,
             )
-            return ChatResponse.from_openai(raw)
+            resp = ChatResponse.from_openai(raw)
         except RateLimitError as e:
             raise LLMRateLimitError(str(e)) from e
         except AuthenticationError as e:
@@ -65,8 +97,10 @@ class LLMService:
         except APIConnectionError as e:
             raise LLMError(f"connection error: {e}") from e
 
+        await self._log_llm_completion(req, resp, (time.perf_counter() - t0) * 1000)
+        return resp
+
     async def complete(self, req: ChatRequest) -> ChatResponse:
-        # Кешируем только детерминированные ответы и при наличии кеша.
         if req.temperature > 0 or self.cache is None:
             resp = await self._call(req)
             resp.cached = False
@@ -77,6 +111,7 @@ class LLMService:
         if blob:
             resp = ChatResponse.model_validate_json(blob)
             resp.cached = True
+            await self._log_llm_completion(req, resp, 0.0, cached=True)
             return resp
 
         resp = await self._call(req)
@@ -85,6 +120,7 @@ class LLMService:
         return resp
 
     async def stream(self, req: ChatRequest) -> AsyncIterator[ChatDelta]:
+        t0 = time.perf_counter()
         stream = await self.llm.chat.completions.create(
             model=req.model,
             messages=[m.model_dump() for m in req.messages],
@@ -93,10 +129,31 @@ class LLMService:
             stream=True,
             stream_options={"include_usage": True},
         )
+        finish_reason: str | None = None
+        model = req.model
+        usage: Usage | None = None
+
         async for chunk in stream:
             if getattr(chunk, "choices", None):
-                delta = chunk.choices[0].delta
+                choice = chunk.choices[0]
+                reason = getattr(choice, "finish_reason", None)
+                if isinstance(reason, str):
+                    finish_reason = reason
+                delta = choice.delta
                 if getattr(delta, "content", None):
                     yield ChatDelta(content=delta.content)
             if getattr(chunk, "usage", None):
-                yield ChatDelta(usage=Usage.from_openai(chunk.usage))
+                usage = Usage.from_openai(chunk.usage)
+                yield ChatDelta(usage=usage)
+            chunk_model = getattr(chunk, "model", None)
+            if isinstance(chunk_model, str):
+                model = chunk_model
+
+        if usage is not None:
+            resp = ChatResponse(
+                content="",
+                model=model,
+                usage=usage,
+                finish_reason=finish_reason,
+            )
+            await self._log_llm_completion(req, resp, (time.perf_counter() - t0) * 1000)

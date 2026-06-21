@@ -111,8 +111,12 @@ def ensure_project_imports() -> None:
 
 
 def ensure_async_tool_call_client() -> None:
-    """Проверяет, что установлен async ToolCallClient из текущего проекта."""
+    """Проверяет ToolCallClient и включает Phoenix-трейсинг до создания LLM-клиента."""
     ensure_project_imports()
+    from app.observability.tracing import setup_tracing
+
+    setup_tracing()
+
     from app.services.docintel import ToolCallClient
     import app.services.docintel.client as client_module
 
@@ -147,3 +151,6 @@ async def close_client(client: Any) -> None:
     close = getattr(client, "aclose", None)
     if close is not None:
         await close()
+    from app.observability.tracing import flush_tracing
+
+    flush_tracing()
