@@ -9,6 +9,12 @@ class Message(BaseModel):
     role: Role
     content: Annotated[str, Field(min_length=1, max_length=100_000)]
 
+    def __repr__(self) -> str:
+        from app.observability.pii import redact_pii
+
+        preview = redact_pii(self.content[:120])
+        return f"Message(role={self.role!r}, content={preview!r})"
+
 
 class Usage(BaseModel):
     prompt_tokens: int = 0

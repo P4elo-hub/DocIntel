@@ -46,3 +46,4 @@ dmypy.json
 
 # Сгенерированные артефакты примеров (ответы LLM)
 examples/answers/
+eval/runs/

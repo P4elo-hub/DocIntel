@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "faq_001",
+      "question": "Что такое DocIntel и для кого он предназначен?",
+      "expected_answer": "DocIntel — AI-ассистент для извлечения, генерации и поиска по проектной документации системного аналитика на основе Markdown-файлов.",
+      "expected_keywords": ["DocIntel", "системный аналитик", "документация", "Markdown"],
+      "category": "factual",
+      "difficulty": "easy",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_002",
+      "question": "Как импортировать документы из Confluence в DocIntel?",
+      "expected_answer": "Через REST API Confluence: выгрузка пространств, конвертация страниц в единый Markdown с сохранением заголовков, таблиц и вложений.",
+      "expected_keywords": ["Confluence", "REST API", "Markdown", "импорт"],
+      "category": "support",
+      "difficulty": "easy",
+      "source": "support_ticket"
+    },
+    {
+      "id": "faq_003",
+      "question": "Какой формат front matter используется в документах DocIntel?",
+      "expected_answer": "YAML front matter с полями title, author, version, tags, source.",
+      "expected_keywords": ["YAML", "front matter", "title", "author", "version"],
+      "category": "factual",
+      "difficulty": "easy",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_004",
+      "question": "Что означает аббревиатура ADR?",
+      "expected_answer": "ADR — Architecture Decision Record, запись архитектурного решения.",
+      "expected_keywords": ["ADR", "Architecture Decision Record", "архитектур"],
+      "category": "factual",
+      "difficulty": "easy",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_005",
+      "question": "Как работает инструмент search_kb?",
+      "expected_answer": "search_kb выполняет семантический/контекстный поиск релевантных фрагментов в базе знаний DocIntel по ключевым словам и контексту запроса.",
+      "expected_keywords": ["search_kb", "поиск", "база знаний", "фрагмент"],
+      "category": "support",
+      "difficulty": "medium",
+      "source": "phoenix_trace"
+    },
+    {
+      "id": "faq_006",
+      "question": "Какие шаблоны документов поддерживает DocIntel?",
+      "expected_answer": "Поддерживаются шаблоны BRD, FRD, API-spec и ADR.",
+      "expected_keywords": ["BRD", "FRD", "API-spec", "ADR", "шаблон"],
+      "category": "factual",
+      "difficulty": "easy",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_007",
+      "question": "Где хранится документация в проекте DocIntel?",
+      "expected_answer": "В git-репозитории документации с версионированием и историей изменений; файлы в Markdown.",
+      "expected_keywords": ["git", "репозиторий", "Markdown", "версионирован"],
+      "category": "factual",
+      "difficulty": "easy",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_008",
+      "question": "Какое максимальное время авторизации платежа по FR-001?",
+      "expected_answer": "Авторизация платежа должна завершаться не дольше 3 секунд при нагрузке до 500 TPS.",
+      "expected_keywords": ["3 секунд", "FR-001", "500 TPS", "авторизац"],
+      "category": "factual",
+      "difficulty": "medium",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_009",
+      "question": "Какие способы оплаты поддерживает платёжный шлюз по FR-002?",
+      "expected_answer": "Интеграция с СБП (Система быстрых платежей) и картами МИР.",
+      "expected_keywords": ["СБП", "МИР", "FR-002", "оплат"],
+      "category": "factual",
+      "difficulty": "medium",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_010",
+      "question": "Какие требования к доступности сервиса по NFR-001?",
+      "expected_answer": "Доступность 99.9%, RPO 15 минут, RTO 1 час.",
+      "expected_keywords": ["99.9", "RPO", "RTO", "NFR-001"],
+      "category": "factual",
+      "difficulty": "medium",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_011",
+      "question": "Какие обязательные поля нужны для POST /v1/payments?",
+      "expected_answer": "amount (decimal), currency (ISO 4217), merchant_id (uuid).",
+      "expected_keywords": ["amount", "currency", "merchant_id", "POST", "payments"],
+      "category": "code_gen",
+      "difficulty": "medium",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_012",
+      "question": "Какие статусы платежа возвращает GET /v1/payments/{id}?",
+      "expected_answer": "pending, authorized, failed, refunded.",
+      "expected_keywords": ["pending", "authorized", "failed", "refunded", "status"],
+      "category": "code_gen",
+      "difficulty": "easy",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_013",
+      "question": "Почему для платёжного шлюза выбран Kafka согласно ADR-007?",
+      "expected_answer": "Event-driven подход с Kafka для асинхронной обработки уведомлений от банков-эквайеров.",
+      "expected_keywords": ["Kafka", "event-driven", "ADR-007", "асинхрон", "эквайер"],
+      "category": "factual",
+      "difficulty": "medium",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_014",
+      "question": "Как экспортировать Markdown обратно в Confluence?",
+      "expected_answer": "Обратная синхронизация Markdown → Confluence доступна для пространств с меткой docintel-sync.",
+      "expected_keywords": ["экспорт", "Confluence", "docintel-sync", "синхронизац"],
+      "category": "support",
+      "difficulty": "medium",
+      "source": "support_ticket"
+    },
+    {
+      "id": "faq_015",
+      "question": "Что такое BRD и какие разделы он включает?",
+      "expected_answer": "BRD — Business Requirements Document; разделы: Цели, Заинтересованные стороны, Бизнес-требования, Ограничения, Критерии приёмки.",
+      "expected_keywords": ["BRD", "Business Requirements", "Цели", "Критерии приёмки"],
+      "category": "factual",
+      "difficulty": "medium",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_016",
+      "question": "DocIntel не отвечает на запросы — с чего начать диагностику?",
+      "expected_answer": "Проверить OPENAI_API_KEY / LLM__OPENAI_API_KEY, доступность Redis, endpoint /ready и логи сервиса; убедиться что DocIntel client инициализирован.",
+      "expected_keywords": ["OPENAI_API_KEY", "Redis", "/ready", "503", "диагност"],
+      "category": "support",
+      "difficulty": "hard",
+      "source": "support_ticket",
+      "must_not_contain": ["переустановите Windows", "обратитесь в Microsoft"]
+    },
+    {
+      "id": "faq_017",
+      "question": "Сколько стоит один миллион input-токенов для gpt-4o-mini?",
+      "expected_answer": "0.15 USD за 1M input-токенов согласно каталогу моделей сервиса.",
+      "expected_keywords": ["0.15", "gpt-4o-mini", "input", "USD"],
+      "category": "billing",
+      "difficulty": "easy",
+      "source": "synthetic"
+    },
+    {
+      "id": "faq_018",
+      "question": "Опиши фичу: перевести уведомления о переводах на Kafka с протоколом Async. Какие разделы документации нужны?",
+      "expected_answer": "Нужны разделы requirements, use case TO BE, integration (Async/Kafka), NFR (producer/consumer), observability; описать event-driven поток уведомлений.",
+      "expected_keywords": ["Kafka", "Async", "integration", "NFR", "observability", "use case"],
+      "category": "code_gen",
+      "difficulty": "hard",
+      "source": "phoenix_trace"
+    },
+    {
+      "id": "faq_019",
+      "question": "Сравни REST и event-driven подход для уведомлений платёжного шлюза: когда выбрать Kafka по ADR-007?",
+      "expected_answer": "Kafka выбран для асинхронных уведомлений от банков-эквайеров: decoupling, буферизация, масштабируемость; REST подходит для синхронных API-вызовов создания/статуса платежа.",
+      "expected_keywords": ["Kafka", "REST", "асинхрон", "ADR-007", "decoupling"],
+      "category": "code_gen",
+      "difficulty": "hard",
+      "source": "bugfix_inc_042"
+    },
+    {
+      "id": "faq_020",
+      "question": "Какие kit-tools покрывают NFR и observability при sectioned-генерации по shablon?",
+      "expected_answer": "write_nfr покрывает NFR (performance, reliability, security), write_observability — метрики, логи, алерты; orchestrator склеивает секции по shablon.md.",
+      "expected_keywords": ["write_nfr", "write_observability", "shablon", "sectioned", "orchestrator"],
+      "category": "code_gen",
+      "difficulty": "hard",
+      "source": "phoenix_trace"
+    },
+    {
+      "id": "faq_021",
+      "question": "Почему ответы DocIntel chat с tool_calls не кешируются при temperature=0?",
+      "expected_answer": "Кеширование применяется только когда tool_calls_made == 0, потому что ответы с вызовом tools зависят от состояния KB и могут быть неконсистентны при повторном использовании.",
+      "expected_keywords": ["tool_calls_made", "кеш", "temperature", "Redis", "features_chat"],
+      "category": "support",
+      "difficulty": "hard",
+      "source": "bugfix_inc_042"
+    },
+    {
+      "id": "faq_022",
+      "question": "Как рассчитывается estimated_cost_usd для gpt-4o при 1000 prompt и 500 completion tokens?",
+      "expected_answer": "Формула: (1000 * input_per_1m + 500 * output_per_1m) / 1_000_000; для gpt-4o: input 2.50, output 10.00 → (1000*2.5 + 500*10)/1e6 = 0.0075 USD.",
+      "expected_keywords": ["0.0075", "gpt-4o", "prompt_tokens", "completion_tokens", "USD"],
+      "category": "billing",
+      "difficulty": "medium",
+      "source": "synthetic"
+    }
+  ]
+}

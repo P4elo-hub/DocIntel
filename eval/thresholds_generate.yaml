@@ -1,0 +1,6 @@
+correctness_avg: 3.5
+min_correctness: 2.0
+relevance_avg: 3.5
+completeness_avg: 3.0
+gate_pass_rate_avg: 0.65
+min_gate_pass_rate: 0.5

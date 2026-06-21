@@ -1,0 +1,14 @@
+{
+  "run_id": "test-bad",
+  "timestamp": "2026-06-21T12:00:00+00:00",
+  "model_under_test": "gpt-4o-mini",
+  "judge_model": "gpt-5.2",
+  "golden_version": 1,
+  "items": [],
+  "aggregates": {
+    "relevance_avg": 4.5,
+    "correctness_avg": 3.5,
+    "completeness_avg": 4.0,
+    "min_correctness": 1.5
+  }
+}

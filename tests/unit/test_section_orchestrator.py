@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.tools.feature_sections import build_execution_plan, merge_section_documents
-from tests.test_tool_call import KAFKA_BRIEF
+from tests.unit.test_tool_call import KAFKA_BRIEF
 
 
 def test_execution_plan_orders_kits_for_kafka_brief() -> None:
@@ -35,7 +35,7 @@ def test_write_section_package_smaller_than_full_doc() -> None:
     from pathlib import Path
 
     from app.tools.registry import ToolHandlers
-    from tests.test_tool_call import METHODOLOGY_DIR, SHABLON_PATH
+    from tests.unit.test_tool_call import METHODOLOGY_DIR, SHABLON_PATH
 
     handlers = ToolHandlers(methodology_dir=METHODOLOGY_DIR, shablon_path=SHABLON_PATH)
     full = handlers.write_feature_doc(feature_brief=KAFKA_BRIEF, protocol="Async")

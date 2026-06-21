@@ -1,0 +1,645 @@
+{
+  "version": 2,
+  "endpoint": "/features/generate",
+  "description": "Golden dataset для /features/generate: examples + templates + spec + quality-gates из feature-methodology-project.",
+  "items": [
+    {
+      "id": "gen_async_001",
+      "feature_brief": "Сейчас синхронный REST в Notification Service. Перевести уведомления о завершении платежа на Kafka topic payments.completed. Нужны producer/consumer, DLQ, Schema Registry.",
+      "feature_name": "Асинхронное событие PaymentCompleted",
+      "protocol": "Async",
+      "question": "Sectioned-документ: Async Kafka-событие PaymentCompleted для платёжного сервиса",
+      "expected_answer": "Раздел 4.1.2 с topic payments.completed, partition key, гарантией At-least-once, таблицей Kafka headers (X-Message-Id, X-Correlation-Id, X-Event-Type), consumer groups и DLQ.",
+      "expected_keywords": [
+        "payments.completed",
+        "X-Message-Id",
+        "At-least-once",
+        "DLQ",
+        "Schema Registry",
+        "Kafka"
+      ],
+      "must_not_contain": [
+        "Пакет методологии",
+        "> **Kit",
+        "# INTERNAL"
+      ],
+      "methodology_ref": "integration-standard-kit/examples/async-message-example.md",
+      "kit": "integration-standard-kit",
+      "tool": "write_integration",
+      "category": "code_gen",
+      "difficulty": "hard",
+      "source": "methodology_example",
+      "shablon_section": "4.1.2",
+      "template_ref": "integration-standard-kit/templates/async-message.template.md",
+      "spec_ref": "integration-standard-kit/spec-kit/async-message.schema.yaml",
+      "gate_ref": "integration-standard-kit/quality-gates/async-review.yaml",
+      "gate_blocking_ids": [
+        "ASYNC-GATE-001",
+        "ASYNC-GATE-002",
+        "ASYNC-GATE-003",
+        "ASYNC-GATE-011",
+        "ASYNC-GATE-012"
+      ]
+    },
+    {
+      "id": "gen_rest_001",
+      "feature_brief": "Добавить REST endpoint GET /api/v1/accounts/{accountId}/transactions для получения истории транзакций по счёту. Синхронная интеграция BFF → Account Transaction Service, JWT, rate limit.",
+      "feature_name": "История транзакций по счёту",
+      "protocol": "REST",
+      "question": "Sectioned-документ: REST GET /api/v1/accounts/{accountId}/transactions",
+      "expected_answer": "Раздел 4.1.1 REST: метод GET, path, headers (Authorization, X-Request-ID), коды ответов, timeout и retry policy.",
+      "expected_keywords": [
+        "GET",
+        "accounts",
+        "transactions",
+        "Authorization",
+        "X-Request-ID",
+        "REST",
+        "JWT"
+      ],
+      "must_not_contain": [
+        "Пакет методологии",
+        "# INTERNAL"
+      ],
+      "methodology_ref": "integration-standard-kit/examples/rest-integration-example.md",
+      "kit": "integration-standard-kit",
+      "tool": "write_integration",
+      "category": "code_gen",
+      "difficulty": "medium",
+      "source": "methodology_example",
+      "shablon_section": "4.1.1",
+      "template_ref": "integration-standard-kit/templates/rest-endpoint.template.md",
+      "spec_ref": "integration-standard-kit/spec-kit/rest-api.schema.yaml",
+      "gate_ref": "integration-standard-kit/quality-gates/rest-review.yaml",
+      "gate_blocking_ids": [
+        "REST-GATE-001",
+        "REST-GATE-002",
+        "REST-GATE-003",
+        "REST-GATE-008",
+        "REST-GATE-009"
+      ]
+    },
+    {
+      "id": "gen_grpc_001",
+      "feature_brief": "Интеграция gRPC-сервиса TransferService для создания перевода между счетами. Синхронный вызов, protobuf, deadline 30s.",
+      "feature_name": "gRPC TransferService",
+      "protocol": "gRPC",
+      "question": "Sectioned-документ: gRPC-сервис TransferService",
+      "expected_answer": "Раздел интеграции gRPC: service/method, request/response message, deadline, коды ошибок gRPC.",
+      "expected_keywords": [
+        "gRPC",
+        "TransferService",
+        "protobuf",
+        "deadline",
+        "UNAVAILABLE"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "integration-standard-kit/examples/grpc-service-example.md",
+      "kit": "integration-standard-kit",
+      "tool": "write_integration",
+      "category": "code_gen",
+      "difficulty": "medium",
+      "source": "methodology_example",
+      "shablon_section": "4.1.1",
+      "template_ref": "integration-standard-kit/templates/grpc-service.template.md",
+      "spec_ref": "integration-standard-kit/spec-kit/grpc-service.schema.yaml",
+      "gate_ref": "integration-standard-kit/quality-gates/grpc-review.yaml",
+      "gate_blocking_ids": [
+        "GRPC-GATE-001",
+        "GRPC-GATE-002",
+        "GRPC-GATE-005"
+      ]
+    },
+    {
+      "id": "gen_graphql_001",
+      "feature_brief": "GraphQL query getTransferHistory для получения истории переводов клиента. Синхронная интеграция через API Gateway.",
+      "feature_name": "GraphQL getTransferHistory",
+      "protocol": "GraphQL",
+      "question": "Sectioned-документ: GraphQL-операция getTransferHistory",
+      "expected_answer": "Раздел GraphQL: query, variables, типы, коды ошибок, авторизация.",
+      "expected_keywords": [
+        "GraphQL",
+        "query",
+        "getTransferHistory",
+        "variables"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "integration-standard-kit/examples/graphql-operation-example.md",
+      "kit": "integration-standard-kit",
+      "tool": "write_integration",
+      "category": "code_gen",
+      "difficulty": "medium",
+      "source": "methodology_example",
+      "shablon_section": "4.1.1",
+      "template_ref": "integration-standard-kit/templates/graphql-operation.template.md",
+      "spec_ref": "integration-standard-kit/spec-kit/graphql-operation.schema.yaml",
+      "gate_ref": "integration-standard-kit/quality-gates/graphql-review.yaml",
+      "gate_blocking_ids": [
+        "GQL-GATE-001",
+        "GQL-GATE-002",
+        "GQL-GATE-003"
+      ]
+    },
+    {
+      "id": "gen_soap_001",
+      "feature_brief": "SOAP-операция CreateTransfer для legacy core banking. Синхронная интеграция, WS-Security, XML envelope.",
+      "feature_name": "SOAP CreateTransfer",
+      "protocol": "SOAP",
+      "question": "Sectioned-документ: SOAP CreateTransfer",
+      "expected_answer": "Раздел SOAP: operation, namespace, request/response envelope, fault codes, WS-Security.",
+      "expected_keywords": [
+        "SOAP",
+        "CreateTransfer",
+        "WS-Security",
+        "envelope",
+        "fault"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "integration-standard-kit/examples/soap-operation-example.md",
+      "kit": "integration-standard-kit",
+      "tool": "write_integration",
+      "category": "code_gen",
+      "difficulty": "medium",
+      "source": "methodology_example",
+      "shablon_section": "4.1.1",
+      "template_ref": "integration-standard-kit/templates/soap-operation.template.md",
+      "spec_ref": "integration-standard-kit/spec-kit/soap-operation.schema.yaml",
+      "gate_ref": "integration-standard-kit/quality-gates/soap-review.yaml",
+      "gate_blocking_ids": [
+        "SOAP-GATE-001",
+        "SOAP-GATE-002",
+        "SOAP-GATE-003"
+      ]
+    },
+    {
+      "id": "gen_uc_001",
+      "feature_brief": "Сейчас перевод между счетами выполняется через синхронный монолит. Целевое состояние: мобильный банк, перевод между своими счетами, лимиты BR-01…BR-06, альтернативные сценарии при недостатке средств.",
+      "feature_name": "Перевод между счетами",
+      "question": "Sectioned-документ: Use Case AS IS и TO BE для перевода между счетами",
+      "expected_answer": "Разделы 1.2 AS IS и 1.3 TO BE: актор Клиент, предусловия, постусловия, BR-01…BR-06, основной сценарий с ЕСЛИ/ТО/ИНАЧЕ, альтернативы с возвратом к шагу.",
+      "expected_keywords": [
+        "AS IS",
+        "TO BE",
+        "BR-01",
+        "ЕСЛИ",
+        "альтернатив",
+        "предуслов",
+        "Клиент"
+      ],
+      "must_not_contain": [
+        "Пакет методологии",
+        "> **Kit"
+      ],
+      "methodology_ref": "use-case-standard-kit/examples/transfer-between-accounts-use-case-example.md",
+      "kit": "use-case-standard-kit",
+      "tool": "write_use_case_to_be",
+      "category": "code_gen",
+      "difficulty": "hard",
+      "source": "methodology_example",
+      "shablon_section": "1.2-usecase,1.3-usecase",
+      "template_ref": "use-case-standard-kit/templates/use-case.template.md",
+      "spec_ref": "use-case-standard-kit/spec-kit/use-case.schema.yaml",
+      "gate_ref": "use-case-standard-kit/quality-gates/use-case-review.yaml",
+      "gate_blocking_ids": [
+        "UC-GATE-002",
+        "UC-GATE-006",
+        "UC-GATE-012",
+        "UC-GATE-014",
+        "UC-GATE-008"
+      ]
+    },
+    {
+      "id": "gen_req_001",
+      "feature_brief": "Фича «Получить историю операций»: единый экран в мобильном банке, агрегация из шести источников через Kafka, BDUI формирует экран. GAP-REQ-001 по недоступности источников.",
+      "feature_name": "История операций",
+      "question": "Sectioned-документ: бизнес-требования и ограничения для истории операций",
+      "expected_answer": "Разделы 1.1 и 2: стейкхолдеры, BR/CN правила, SMART-цель, GAP-REQ для неопределённого поведения при недоступности источников.",
+      "expected_keywords": [
+        "история операций",
+        "BDUI",
+        "Kafka",
+        "стейкхолдер",
+        "GAP-REQ",
+        "SMART"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "requirements-standard-kit/examples/operation-history-requirements-example.md",
+      "kit": "requirements-standard-kit",
+      "tool": "write_requirements",
+      "category": "code_gen",
+      "difficulty": "hard",
+      "source": "methodology_example",
+      "shablon_section": "1.1,2",
+      "template_ref": "requirements-standard-kit/templates/requirements-analysis.template.md",
+      "spec_ref": "requirements-standard-kit/spec-kit/requirements-analysis.schema.yaml",
+      "gate_ref": "requirements-standard-kit/quality-gates/requirements-review.yaml",
+      "gate_blocking_ids": [
+        "REQ-GATE-002",
+        "REQ-GATE-005",
+        "REQ-GATE-006",
+        "REQ-GATE-007"
+      ]
+    },
+    {
+      "id": "gen_data_001",
+      "feature_brief": "Добавить сущности payments и refunds к существующей модели orders/users в PostgreSQL. Связь с платёжным шлюзом, миграции, ER-диаграмма.",
+      "feature_name": "Payment Processing — модель данных",
+      "question": "Sectioned-документ: модель данных payments/refunds",
+      "expected_answer": "Раздел 4.2.3: сущности payments, refunds, FK к orders/users, типы полей, миграции, ER или таблица атрибутов.",
+      "expected_keywords": [
+        "payments",
+        "refunds",
+        "PostgreSQL",
+        "orders",
+        "UUID",
+        "FK",
+        "миграц"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "data-standard-kit/examples/payment-processing-data-model-example.md",
+      "kit": "data-standard-kit",
+      "tool": "write_data_model",
+      "category": "code_gen",
+      "difficulty": "hard",
+      "source": "methodology_example",
+      "shablon_section": "4.2.3",
+      "template_ref": "data-standard-kit/templates/data-model.template.md",
+      "spec_ref": "data-standard-kit/spec-kit/data-model.schema.yaml",
+      "gate_ref": "data-standard-kit/quality-gates/data-model-review.yaml",
+      "gate_blocking_ids": [
+        "DM-GATE-002",
+        "DM-GATE-004",
+        "DM-GATE-005"
+      ]
+    },
+    {
+      "id": "gen_nfr_perf_001",
+      "feature_brief": "NFR производительность для переводов между счетами: POST /api/v1/transfers p85 < 500ms, 100 RPS штатно / 500 пик, Kafka payments.transfer.completed 100 msg/s.",
+      "feature_name": "NFR — производительность переводов",
+      "question": "Sectioned-документ: NFR производительность переводов",
+      "expected_answer": "Подраздел 5.2 performance: таблицы p85/p95 по endpoint, RPS штатный/пиковый, условия измерения CCU.",
+      "expected_keywords": [
+        "p85",
+        "500 ms",
+        "RPS",
+        "POST /api/v1/transfers",
+        "пиков"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "nfr-standard-kit/examples/account-transfer-performance-example.md",
+      "kit": "nfr-standard-kit",
+      "tool": "write_nfr",
+      "category": "code_gen",
+      "difficulty": "medium",
+      "source": "methodology_example",
+      "shablon_section": "5.2-performance",
+      "template_ref": "nfr-standard-kit/templates/performance.template.md",
+      "spec_ref": "nfr-standard-kit/spec-kit/performance.schema.yaml",
+      "gate_ref": "nfr-standard-kit/quality-gates/performance-review.yaml",
+      "gate_blocking_ids": [
+        "PERF-GATE-002",
+        "PERF-GATE-003",
+        "PERF-GATE-007"
+      ]
+    },
+    {
+      "id": "gen_nfr_rel_001",
+      "feature_brief": "NFR надёжность сервиса переводов: SLO доступности, degradation mode, fallback при недоступности AML, компенсирующие транзакции.",
+      "feature_name": "NFR — надёжность переводов",
+      "question": "Sectioned-документ: NFR надёжность переводов",
+      "expected_answer": "Подраздел 5.2 reliability: SLO/SLA, сценарии деградации, retry, компенсация, RPO/RTO.",
+      "expected_keywords": [
+        "SLO",
+        "надёжност",
+        "degradation",
+        "retry",
+        "компенсац",
+        "RPO"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "nfr-standard-kit/examples/account-transfer-reliability-example.md",
+      "kit": "nfr-standard-kit",
+      "tool": "write_nfr",
+      "category": "code_gen",
+      "difficulty": "medium",
+      "source": "methodology_example",
+      "shablon_section": "5.2-reliability",
+      "template_ref": "nfr-standard-kit/templates/reliability.template.md",
+      "spec_ref": "nfr-standard-kit/spec-kit/reliability.schema.yaml",
+      "gate_ref": "nfr-standard-kit/quality-gates/reliability-review.yaml",
+      "gate_blocking_ids": [
+        "REL-GATE-001",
+        "REL-GATE-002"
+      ]
+    },
+    {
+      "id": "gen_nfr_config_001",
+      "feature_brief": "NFR конфигурация сервиса переводов: ConfigMap параметры лимитов, hot-reload, версионирование настроек.",
+      "feature_name": "NFR — конфигурация переводов",
+      "question": "Sectioned-документ: NFR конфигурация",
+      "expected_answer": "Подраздел 5.4: таблица параметров конфигурации, источник, значение по умолчанию, влияние на поведение.",
+      "expected_keywords": [
+        "конфигурац",
+        "ConfigMap",
+        "параметр",
+        "5.4"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "nfr-standard-kit/examples/account-transfer-configuration-example.md",
+      "kit": "nfr-standard-kit",
+      "tool": "write_nfr",
+      "category": "code_gen",
+      "difficulty": "medium",
+      "source": "methodology_example",
+      "shablon_section": "5.4",
+      "template_ref": "nfr-standard-kit/templates/configuration.template.md",
+      "spec_ref": "nfr-standard-kit/spec-kit/configuration.schema.yaml",
+      "gate_ref": "nfr-standard-kit/quality-gates/configuration-review.yaml",
+      "gate_blocking_ids": [
+        "CONF-GATE-001",
+        "CONF-GATE-002"
+      ]
+    },
+    {
+      "id": "gen_nfr_toggles_001",
+      "feature_brief": "Feature toggles для поэтапной раскатки переводов: kill-switch, canary по проценту клиентов, таблица toggles.",
+      "feature_name": "NFR — feature toggles переводов",
+      "question": "Sectioned-документ: feature toggles",
+      "expected_answer": "Подраздел 5.5 Feature Toggles: имя toggle, default, rollout strategy, kill-switch.",
+      "expected_keywords": [
+        "Feature Toggle",
+        "kill-switch",
+        "canary",
+        "раскатк",
+        "5.5"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "nfr-standard-kit/examples/account-transfer-feature-toggles-example.md",
+      "kit": "nfr-standard-kit",
+      "tool": "write_nfr",
+      "category": "code_gen",
+      "difficulty": "medium",
+      "source": "methodology_example",
+      "shablon_section": "5.5",
+      "template_ref": "nfr-standard-kit/templates/feature-toggles.template.md",
+      "spec_ref": "nfr-standard-kit/spec-kit/feature-toggles.schema.yaml",
+      "gate_ref": "nfr-standard-kit/quality-gates/feature-toggles-review.yaml",
+      "gate_blocking_ids": [
+        "TOGL-GATE-001",
+        "TOGL-GATE-002"
+      ]
+    },
+    {
+      "id": "gen_obs_log_001",
+      "feature_brief": "Логирование для переводов между счетами: eventType CREATE_TRANSFER, PUBLISH_TRANSFER_EVENT в Kafka, correlationId, интеграционный и системный журналы.",
+      "feature_name": "Observability — логирование переводов",
+      "question": "Sectioned-документ: требования к логированию переводов",
+      "expected_answer": "Раздел 5.3.1: таблица событий логирования, уровни ERROR/WARN/INFO, обязательные поля correlationId/eventType.",
+      "expected_keywords": [
+        "5.3.1",
+        "CREATE_TRANSFER",
+        "correlationId",
+        "eventType",
+        "Kafka",
+        "логирован"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "observability-standard-kit/examples/account-transfer-logging-example.md",
+      "kit": "observability-standard-kit",
+      "tool": "write_observability",
+      "category": "code_gen",
+      "difficulty": "medium",
+      "source": "methodology_example",
+      "shablon_section": "5.3.1",
+      "template_ref": "observability-standard-kit/templates/logging.template.md",
+      "spec_ref": "observability-standard-kit/spec-kit/logging.schema.yaml",
+      "gate_ref": "observability-standard-kit/quality-gates/logging-review.yaml",
+      "gate_blocking_ids": [
+        "LOG-GATE-001",
+        "LOG-GATE-002",
+        "LOG-GATE-005"
+      ]
+    },
+    {
+      "id": "gen_obs_metrics_001",
+      "feature_brief": "Метрики Prometheus для переводов: latency histogram, success rate, Kafka consumer lag, алерты для producer/consumer.",
+      "feature_name": "Observability — метрики переводов",
+      "question": "Sectioned-документ: метрики и мониторинг переводов",
+      "expected_answer": "Раздел 5.3.2: таблица метрик (имя, тип, labels), пороги алертов, дашборды.",
+      "expected_keywords": [
+        "5.3.2",
+        "Prometheus",
+        "histogram",
+        "consumer lag",
+        "алерт",
+        "метрик"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "observability-standard-kit/examples/account-transfer-metrics-example.md",
+      "kit": "observability-standard-kit",
+      "tool": "write_observability",
+      "category": "code_gen",
+      "difficulty": "medium",
+      "source": "methodology_example",
+      "shablon_section": "5.3.2",
+      "template_ref": "observability-standard-kit/templates/metrics.template.md",
+      "spec_ref": "observability-standard-kit/spec-kit/metrics.schema.yaml",
+      "gate_ref": "observability-standard-kit/quality-gates/metrics-review.yaml",
+      "gate_blocking_ids": [
+        "METR-GATE-001",
+        "METR-GATE-002",
+        "METR-GATE-005"
+      ]
+    },
+    {
+      "id": "gen_full_kafka_001",
+      "feature_brief": "Сейчас синхронный REST в Notification Service. Перевести уведомления о переводах на Kafka topic transfer.completed. Нужны логирование и метрики для producer и consumer, NFR производительности.",
+      "feature_name": "Kafka-уведомления о переводах",
+      "protocol": "Async",
+      "question": "Полный sectioned-документ по Kafka-миграции уведомлений (orchestrator, все kit-tools)",
+      "expected_answer": "Полный markdown по shablon: 1.1, 1.2 AS IS, 1.3 TO BE, 2, 4.1.2 Async/Kafka, 5.3.1 логи, 5.3.2 метрики; без служебных строк kit.",
+      "expected_keywords": [
+        "Kafka",
+        "transfer.completed",
+        "AS IS",
+        "TO BE",
+        "5.3.1",
+        "5.3.2",
+        "producer",
+        "consumer"
+      ],
+      "must_not_contain": [
+        "Пакет методологии",
+        "# INTERNAL",
+        "> **Kit"
+      ],
+      "methodology_ref": "integration-standard-kit/examples/async-message-example.md",
+      "kit": "integration-standard-kit",
+      "tool": "write_integration",
+      "category": "code_gen",
+      "difficulty": "hard",
+      "source": "methodology_example",
+      "shablon_section": "1.1,1.2-usecase,1.3-usecase,2,4.1.2,5.3.1,5.3.2",
+      "template_ref": "integration-standard-kit/templates/async-message.template.md",
+      "spec_ref": "integration-standard-kit/spec-kit/async-message.schema.yaml",
+      "gate_ref": "integration-standard-kit/quality-gates/async-review.yaml",
+      "quality_gates": [
+        {
+          "gate_ref": "integration-standard-kit/quality-gates/async-review.yaml",
+          "blocking_ids": [
+            "ASYNC-GATE-001",
+            "ASYNC-GATE-003",
+            "ASYNC-GATE-012"
+          ]
+        },
+        {
+          "gate_ref": "observability-standard-kit/quality-gates/logging-review.yaml",
+          "blocking_ids": [
+            "LOG-GATE-002",
+            "LOG-GATE-005"
+          ]
+        },
+        {
+          "gate_ref": "observability-standard-kit/quality-gates/metrics-review.yaml",
+          "blocking_ids": [
+            "METR-GATE-001",
+            "METR-GATE-002"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gen_gate_async_focus",
+      "feature_brief": "Событие PaymentCompleted в Kafka topic payments.completed. Consumer groups Order/Notification, DLQ, Schema Registry BACKWARD.",
+      "feature_name": "PaymentCompleted Kafka (gate focus)",
+      "protocol": "Async",
+      "question": "Gate-focus: async-message по ASYNC-GATE blocking checks",
+      "expected_answer": "Документ 4.1.2 проходит async-review: topic, headers, consumer/DLQ, envelope, пример события.",
+      "expected_keywords": [
+        "payments.completed",
+        "X-Message-Id",
+        "consumer group",
+        "DLQ",
+        "metadata",
+        "payload"
+      ],
+      "must_not_contain": [
+        "Пакет методологии",
+        "# INTERNAL",
+        "> **Kit"
+      ],
+      "methodology_ref": "integration-standard-kit/examples/async-message-example.md",
+      "kit": "integration-standard-kit",
+      "tool": "write_integration",
+      "category": "code_gen",
+      "difficulty": "hard",
+      "source": "methodology_gate",
+      "shablon_section": "4.1.2",
+      "template_ref": "integration-standard-kit/templates/async-message.template.md",
+      "spec_ref": "integration-standard-kit/spec-kit/async-message.schema.yaml",
+      "gate_ref": "integration-standard-kit/quality-gates/async-review.yaml",
+      "gate_blocking_ids": [
+        "ASYNC-GATE-001",
+        "ASYNC-GATE-002",
+        "ASYNC-GATE-003",
+        "ASYNC-GATE-004",
+        "ASYNC-GATE-011",
+        "ASYNC-GATE-012"
+      ]
+    },
+    {
+      "id": "gen_gate_metrics_focus",
+      "feature_brief": "Метрики Prometheus для переводов между счетами: latency histogram, error counters, business KPI, consumer lag Kafka.",
+      "feature_name": "Metrics gate focus — переводы",
+      "question": "Gate-focus: metrics по METR-GATE blocking checks",
+      "expected_answer": "Раздел 5.3.2 с technical/error/business metrics, labels, GAP-OBS/status.",
+      "expected_keywords": [
+        "5.3.2",
+        "Prometheus",
+        "histogram",
+        "error",
+        "business",
+        "GAP-OBS"
+      ],
+      "must_not_contain": [
+        "Пакет методологии"
+      ],
+      "methodology_ref": "observability-standard-kit/examples/account-transfer-metrics-example.md",
+      "kit": "observability-standard-kit",
+      "tool": "write_observability",
+      "category": "code_gen",
+      "difficulty": "hard",
+      "source": "methodology_gate",
+      "shablon_section": "5.3.2",
+      "template_ref": "observability-standard-kit/templates/metrics.template.md",
+      "spec_ref": "observability-standard-kit/spec-kit/metrics.schema.yaml",
+      "gate_ref": "observability-standard-kit/quality-gates/metrics-review.yaml",
+      "gate_blocking_ids": [
+        "METR-GATE-001",
+        "METR-GATE-002",
+        "METR-GATE-003",
+        "METR-GATE-005"
+      ]
+    },
+    {
+      "id": "gen_gate_uc_focus",
+      "feature_brief": "Use Case: оформить перевод между счетами в мобильном банке. BR-01…BR-06, альтернативы 3a/3b/3c, ЕСЛИ/ТО/ИНАЧЕ.",
+      "feature_name": "Use Case gate focus — перевод между счетами",
+      "question": "Gate-focus: use case по UC-GATE blocking checks",
+      "expected_answer": "Use Case с предусловиями, BR-id, main scenario ЕСЛИ/ТО/ИНАЧЕ, альтернативы с возвратом.",
+      "expected_keywords": [
+        "Use Case",
+        "BR-01",
+        "ЕСЛИ",
+        "ИНАЧЕ",
+        "альтернатив",
+        "Предуслов"
+      ],
+      "must_not_contain": [
+        "Пакет методологии",
+        "СТД-",
+        "TODO"
+      ],
+      "methodology_ref": "use-case-standard-kit/examples/transfer-between-accounts-use-case-example.md",
+      "kit": "use-case-standard-kit",
+      "tool": "write_use_case_to_be",
+      "category": "code_gen",
+      "difficulty": "hard",
+      "source": "methodology_gate",
+      "shablon_section": "1.2-usecase,1.3-usecase",
+      "template_ref": "use-case-standard-kit/templates/use-case.template.md",
+      "spec_ref": "use-case-standard-kit/spec-kit/use-case.schema.yaml",
+      "gate_ref": "use-case-standard-kit/quality-gates/use-case-review.yaml",
+      "gate_blocking_ids": [
+        "UC-GATE-002",
+        "UC-GATE-008",
+        "UC-GATE-012",
+        "UC-GATE-014",
+        "UC-GATE-017",
+        "UC-GATE-019"
+      ]
+    }
+  ]
+}

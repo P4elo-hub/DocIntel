@@ -12,6 +12,7 @@ from app.core.config import LLMSettings, Settings
 from app.deps.providers import get_cache, get_docintel_client
 from app.main import app
 from app.services.docintel import ToolCallClient
+from tests.helpers import CASSETS_DIR
 
 
 class FakeDocIntelClient(ToolCallClient):
@@ -43,10 +44,8 @@ async def test_features_chat_cache_hit_without_tools(
     fake_client: FakeDocIntelClient,
     mock_cache,
 ) -> None:
-    cached_blob = (
-        '{"content":"из-кеша","model":"gpt-4o-mini",'
-        '"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"estimated_cost_usd":0.0},'
-        '"finish_reason":"stop","cached":false,"request_id":null}'
+    cached_blob = (CASSETS_DIR / "cache" / "features_chat_hit.json").read_text(
+        encoding="utf-8"
     )
     mock_cache.get.return_value = cached_blob
 

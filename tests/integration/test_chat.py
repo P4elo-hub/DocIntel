@@ -90,12 +90,9 @@ async def test_batch_limit_413(client):
 
 
 async def test_chat_cache_hit(client, mock_cache, mock_llm):
-    # При temperature=0 включается кеш. Подсунем закешированный ответ.
-    cached_blob = (
-        '{"content":"из-кеша","model":"gpt-4o-mini",'
-        '"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"estimated_cost_usd":0.0},'
-        '"finish_reason":"stop","cached":false,"request_id":null}'
-    )
+    from tests.helpers import CASSETS_DIR
+
+    cached_blob = (CASSETS_DIR / "cache" / "chat_hit.json").read_text(encoding="utf-8")
     mock_cache.get.return_value = cached_blob
 
     resp = await client.post(

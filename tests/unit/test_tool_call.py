@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from app.tools.registry import ToolHandlers
 from app.tools.write_feature_doc.shablon_loader import infer_sections, parse_shablon
+from tests.helpers import PROJECT_ROOT
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOCS_DIR = PROJECT_ROOT / "app" / "data" / "docs"
 KB_PATH = PROJECT_ROOT / "app" / "data" / "knowledge_base.txt"
 METHODOLOGY_DIR = PROJECT_ROOT / "feature-methodology-project"

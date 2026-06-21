@@ -29,7 +29,7 @@ app/
     ├── features.py      # FeatureGenerateRequest/Response
     └── models.py        # ModelInfo
 feature-methodology-project/   # shablon.md + standard kits (DocIntel)
-tests/                           # 45 тестов (эталон + DocIntel)
+tests/                           # unit + integration + cassets (см. tests/README.md)
 ```
 
 ## Примеры (examples/)
