@@ -14,7 +14,7 @@ def get_llm(request: Request):
 
 
 def get_cache(request: Request):
-    return request.app.state.redis
+    return getattr(request.app.state, "redis", None)
 
 
 def get_docintel_client(request: Request) -> ToolCallClient:

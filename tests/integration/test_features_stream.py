@@ -17,7 +17,9 @@ from app.main import app
 
 
 class FakeStreamClient(ToolCallClient):
-    async def stream_chat(self, prompt: str, *, model: str | None = None) -> AsyncIterator[str]:
+    async def stream_chat(
+        self, prompt: str, *, model: str | None = None, canary: str = ""
+    ) -> AsyncIterator[str]:
         yield "Event "
         yield "loop "
         yield "— это механизм asyncio."

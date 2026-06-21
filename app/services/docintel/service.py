@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+from app.core.exceptions import LLMError
 from app.schemas.chat import ChatDelta, ChatRequest, ChatResponse, Message, Usage
 from app.schemas.features import FeatureGenerateRequest, FeatureGenerateResponse
 from app.services.cache import FEATURES_CHAT_CACHE_PREFIX, chat_cache_key
 from app.services.docintel.client import ToolCallClient
+from app.services.security.output_filter import filter_output
 
 
 def _messages_to_user_text(messages: list[Message]) -> str:
@@ -56,7 +58,7 @@ class DocIntelService:
             protocol=req.protocol,
         )
 
-    async def chat_with_tools(self, req: ChatRequest) -> ChatResponse:
+    async def chat_with_tools(self, req: ChatRequest, *, canary: str = "") -> ChatResponse:
         cache_key: str | None = None
         if req.temperature == 0 and self._cache is not None:
             cache_key = chat_cache_key(FEATURES_CHAT_CACHE_PREFIX, req)
@@ -67,9 +69,20 @@ class DocIntelService:
                 return resp
 
         user_message = _last_user_message(req.messages)
-        result = await self._client.chat_json(user_message)
+        result = await self._client.chat_json(user_message, canary=canary)
+        content = result["answer"]
+        if canary:
+            try:
+                content = filter_output(
+                    content,
+                    self._client.system_prompt_text(canary=canary),
+                    canary,
+                )
+            except ValueError as e:
+                raise LLMError(str(e)) from e
+
         resp = ChatResponse(
-            content=result["answer"],
+            content=content,
             model=result["model"],
             usage=Usage(),
             finish_reason="stop",
@@ -84,8 +97,8 @@ class DocIntelService:
 
         return resp
 
-    async def stream(self, req: ChatRequest) -> AsyncIterator[ChatDelta]:
+    async def stream(self, req: ChatRequest, *, canary: str = "") -> AsyncIterator[ChatDelta]:
         prompt = _last_user_message(req.messages)
         model = req.model if req.model != "gpt-4o-mini" else None
-        async for delta in self._client.stream_chat(prompt, model=model):
+        async for delta in self._client.stream_chat(prompt, model=model, canary=canary):
             yield ChatDelta(content=delta)

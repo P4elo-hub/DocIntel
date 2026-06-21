@@ -70,3 +70,29 @@ uv run python eval/run_evaluation_generate.py \
 В run JSON: `gate_checks`, `gate_summary.pass_rate`, агрегаты `gate_pass_rate_avg`.
 
 Фокус-кейсы `gen_gate_*_focus` — расширенный набор `gate_blocking_ids` для async/metrics/use-case.
+
+## Security (garak, Б3.8)
+
+Конфиги REST-таргета:
+
+| Файл | Endpoint |
+|------|----------|
+| `eval/security/rest_config.json` | `POST /chat` |
+| `eval/security/rest_config_features.json` | `POST /features/chat` |
+
+```bash
+# baseline (защита выключена)
+SECURITY_ENABLED=false docker compose up -d app
+
+garak --target_type rest -G eval/security/rest_config.json \
+  --probes promptinject.HijackHateHumans,encoding.InjectBase64,dan.Ablation_Dan_11_0 \
+  --generations 1 --parallel_attempts 2 --report_prefix baseline
+
+# after (SECURITY_ENABLED=true в .env / compose)
+garak --target_type rest -G eval/security/rest_config.json \
+  --probes promptinject.HijackHateHumans,encoding.InjectBase64,dan.Ablation_Dan_11_0 \
+  --generations 1 --parallel_attempts 2 --report_prefix after
+```
+
+Отчёты: `docs/security/garak_*.md`, HTML/JSONL — `docs/security/reports/`.  
+Рендер markdown из JSONL: `python3 eval/security/render_garak_report.py …`

@@ -46,6 +46,7 @@ async def client(mock_llm, mock_cache):
     # чтобы health/ready, использующие request.app.state, тоже работали.
     app.state.llm = mock_llm
     app.state.redis = mock_cache
+    app.state.canary = "CANARY_test0001"
 
     app.dependency_overrides[get_llm] = lambda: mock_llm
     app.dependency_overrides[get_cache] = lambda: mock_cache

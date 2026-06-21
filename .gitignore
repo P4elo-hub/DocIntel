@@ -43,7 +43,12 @@ dmypy.json
 # Логи и временные файлы
 *.log
 .cache/
+logs/
 
 # Сгенерированные артефакты примеров (ответы LLM)
 examples/answers/
 eval/runs/
+
+# Garak: локальные hitlog-копии (JSONL/HTML отчёты — в docs/security/reports/)
+*.hitlog.jsonl
+.garak/

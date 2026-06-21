@@ -16,3 +16,11 @@ class LLMTimeoutError(LLMError):
 
 class LLMContentFilterError(LLMError):
     """Контент заблокирован модерацией."""
+
+
+class SecurityValidationError(Exception):
+    """Входной промпт отклонён защитным слоем."""
+
+    def __init__(self, message: str, *, rule: str | None = None):
+        super().__init__(message)
+        self.rule = rule

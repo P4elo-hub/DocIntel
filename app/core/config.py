@@ -81,6 +81,14 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
     redis_url: str = "redis://localhost:6379/0"
     cache_ttl_seconds: int = 3600
+    rate_limit_per_min: int = Field(
+        default=0,
+        validation_alias=AliasChoices("rate_limit_per_min", "RATE_LIMIT_PER_MIN"),
+    )
+    security_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("security_enabled", "SECURITY_ENABLED"),
+    )
     # Alias критерия приёмки: OPENAI_API_KEY в .env → llm.openai_api_key
     openai_api_key: SecretStr | None = Field(
         default=None,

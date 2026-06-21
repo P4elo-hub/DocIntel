@@ -6,3 +6,4 @@ services:
       - ./feature-methodology-project:/app/feature-methodology-project:ro
     environment:
       LOG_LEVEL: DEBUG
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-0}

@@ -17,6 +17,7 @@ _PII_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("CARD", re.compile(r"\b(?:\d{4}[\s\-]?){3}\d{4}\b")),
     ("INN", re.compile(r"\b\d{10}(?:\d{2})?\b")),
     ("PASSPORT", re.compile(r"\b\d{4}[\s\-]?\d{6}\b")),
+    ("ORDER", re.compile(r"\b(?:ORD|ЗК|ORDER)[\-\s]?\d{6,12}\b", re.IGNORECASE)),
 ]
 
 _PRESIDIO_LONG_PROMPT_THRESHOLD = 500

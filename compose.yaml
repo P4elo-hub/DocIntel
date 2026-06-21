@@ -13,6 +13,8 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006/v1/traces
+      SECURITY_ENABLED: ${SECURITY_ENABLED:-true}
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-30}
     depends_on:
       redis:
         condition: service_healthy

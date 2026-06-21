@@ -19,6 +19,13 @@ data/
 *.md
 !README.md
 
+# Тесты, eval и отчёты garak — не нужны в runtime-образе
+tests/
+eval/
+scripts/
+docs/
+docs/security/reports/**/*.hitlog.jsonl
+
 .vscode/
 .idea/
 .DS_Store

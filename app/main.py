@@ -1,4 +1,5 @@
 import os
+import secrets
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -19,11 +20,13 @@ from app.core.exceptions import (
     LLMError,
     LLMRateLimitError,
     LLMTimeoutError,
+    SecurityValidationError,
 )
 from app.observability.logging import get_logger, observability_middleware, setup_logging
 from app.observability.tracing import setup_tracing
 from app.routers import chat, features, health, models
 from app.services.docintel import ToolCallClient
+from app.services.security.rate_limit import rate_limit_middleware
 
 settings = get_settings()
 setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
@@ -33,6 +36,9 @@ logger = get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_tracing()
+
+    app.state.canary = f"CANARY_{secrets.token_hex(4)}"
+    logger.info("security_canary_initialized", canary=app.state.canary)
 
     app.state.llm = AsyncOpenAI(
         api_key=settings.llm.openai_api_key.get_secret_value(),
@@ -99,6 +105,7 @@ app.add_middleware(
 )
 
 app.middleware("http")(observability_middleware)
+app.middleware("http")(rate_limit_middleware)
 
 _STATUS_MAP: list[tuple[type[LLMError], int, str]] = [
     (LLMRateLimitError, 429, "llm_rate_limit"),
@@ -121,6 +128,21 @@ async def handle_llm_error(request, exc: LLMError):
     return JSONResponse(
         status_code=502,
         content={"error": {"code": "llm_error", "message": str(exc)}},
+    )
+
+
+@app.exception_handler(SecurityValidationError)
+async def handle_security_validation(request, exc: SecurityValidationError):
+    return JSONResponse(
+        status_code=400,
+        content={
+            "error": {
+                "code": "input_rejected",
+                "message": str(exc),
+                "rule": exc.rule,
+            }
+        },
+        headers={"X-Request-ID": getattr(request.state, "request_id", "")},
     )
 
 

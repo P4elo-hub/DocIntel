@@ -1,11 +1,13 @@
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from app.core.config import get_settings
 from app.deps.providers import DocIntelServiceDep
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.features import FeatureGenerateRequest, FeatureGenerateResponse
+from app.services.security.guards import validate_chat_messages
 
 router = APIRouter(prefix="/features", tags=["features"])
 
@@ -65,15 +67,35 @@ async def generate_feature_batch(
         "Классический цикл LLM tool calling (write_feature_doc, search_kb, kit-tools). "
         "При temperature=0 ответы без вызова tools кешируются в Redis (префикс features_chat:)."
     ),
+    responses={
+        200: {"description": "Успешный ответ"},
+        400: {"description": "Вход отклонён защитным слоем"},
+        502: {"description": "Ошибка LLM или утечка system prompt"},
+    },
 )
-async def docintel_chat(req: ChatRequest, service: DocIntelServiceDep) -> ChatResponse:
-    return await service.chat_with_tools(req)
+async def docintel_chat(
+    req: ChatRequest,
+    service: DocIntelServiceDep,
+    request: Request,
+) -> ChatResponse:
+    validate_chat_messages(req.messages)
+    canary = getattr(request.app.state, "canary", "") if get_settings().security_enabled else ""
+    resp = await service.chat_with_tools(req, canary=canary)
+    resp.request_id = getattr(request.state, "request_id", None)
+    return resp
 
 
 @router.post("/chat/stream", summary="DocIntel streaming через SSE")
-async def docintel_chat_stream(req: ChatRequest, service: DocIntelServiceDep):
+async def docintel_chat_stream(
+    req: ChatRequest,
+    service: DocIntelServiceDep,
+    request: Request,
+):
+    validate_chat_messages(req.messages)
+    canary = getattr(request.app.state, "canary", "") if get_settings().security_enabled else ""
+
     async def event_source():
-        async for delta in service.stream(req):
+        async for delta in service.stream(req, canary=canary):
             yield f"data: {delta.model_dump_json()}\n\n"
         yield "data: [DONE]\n\n"
 
