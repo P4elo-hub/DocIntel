@@ -40,8 +40,16 @@ def get_llm_service(
     return LLMService(llm=llm, cache=cache, ttl=settings.cache_ttl_seconds)
 
 
-def get_docintel_service(client: DocIntelClientDep) -> DocIntelService:
-    return DocIntelService(client=client)
+def get_docintel_service(
+    client: DocIntelClientDep,
+    cache: CacheDep,
+    settings: SettingsDep,
+) -> DocIntelService:
+    return DocIntelService(
+        client=client,
+        cache=cache,
+        ttl=settings.cache_ttl_seconds,
+    )
 
 
 LLMServiceDep = Annotated[LLMService, Depends(get_llm_service)]

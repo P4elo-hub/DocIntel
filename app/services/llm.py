@@ -1,5 +1,3 @@
-import hashlib
-import json
 from collections.abc import AsyncIterator
 
 from tenacity import (
@@ -17,6 +15,7 @@ from app.core.exceptions import (
     LLMTimeoutError,
 )
 from app.schemas.chat import ChatDelta, ChatRequest, ChatResponse, Usage
+from app.services.cache import CHAT_CACHE_PREFIX, chat_cache_key
 
 try:
     from openai import (
@@ -35,11 +34,6 @@ class LLMService:
         self.llm = llm
         self.cache = cache
         self.ttl = ttl
-
-    def _key(self, req: ChatRequest) -> str:
-        payload = req.model_dump(exclude={"user_id", "stream"})
-        blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
-        return "chat:" + hashlib.sha256(blob.encode()).hexdigest()
 
     @retry(
         stop=stop_after_attempt(3),
@@ -78,7 +72,7 @@ class LLMService:
             resp.cached = False
             return resp
 
-        key = self._key(req)
+        key = chat_cache_key(CHAT_CACHE_PREFIX, req)
         blob = await self.cache.get(key)
         if blob:
             resp = ChatResponse.model_validate_json(blob)

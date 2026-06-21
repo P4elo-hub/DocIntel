@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 
 from app.schemas.chat import ChatDelta, ChatRequest, ChatResponse, Message, Usage
 from app.schemas.features import FeatureGenerateRequest, FeatureGenerateResponse
+from app.services.cache import FEATURES_CHAT_CACHE_PREFIX, chat_cache_key
 from app.services.docintel.client import ToolCallClient
 
 
@@ -31,8 +32,15 @@ def _last_user_message(messages: list[Message]) -> str:
 class DocIntelService:
     """DocIntel API: sectioned-генерация, tool calling, stream."""
 
-    def __init__(self, client: ToolCallClient) -> None:
+    def __init__(
+        self,
+        client: ToolCallClient,
+        cache=None,
+        ttl: int = 3600,
+    ) -> None:
         self._client = client
+        self._cache = cache
+        self._ttl = ttl
 
     async def generate_feature(self, req: FeatureGenerateRequest) -> FeatureGenerateResponse:
         result = await self._client.chat_sectioned_json(
@@ -49,15 +57,32 @@ class DocIntelService:
         )
 
     async def chat_with_tools(self, req: ChatRequest) -> ChatResponse:
+        cache_key: str | None = None
+        if req.temperature == 0 and self._cache is not None:
+            cache_key = chat_cache_key(FEATURES_CHAT_CACHE_PREFIX, req)
+            blob = await self._cache.get(cache_key)
+            if blob:
+                resp = ChatResponse.model_validate_json(blob)
+                resp.cached = True
+                return resp
+
         user_message = _last_user_message(req.messages)
         result = await self._client.chat_json(user_message)
-        return ChatResponse(
+        resp = ChatResponse(
             content=result["answer"],
             model=result["model"],
             usage=Usage(),
             finish_reason="stop",
             cached=False,
         )
+
+        if (
+            cache_key is not None
+            and result["tool_calls_made"] == 0
+        ):
+            await self._cache.setex(cache_key, self._ttl, resp.model_dump_json())
+
+        return resp
 
     async def stream(self, req: ChatRequest) -> AsyncIterator[ChatDelta]:
         prompt = _last_user_message(req.messages)

@@ -61,7 +61,10 @@ async def generate_feature_batch(
     "/chat",
     response_model=ChatResponse,
     summary="DocIntel chat с tool calling",
-    description="Классический цикл LLM tool calling (write_feature_doc, search_kb, kit-tools).",
+    description=(
+        "Классический цикл LLM tool calling (write_feature_doc, search_kb, kit-tools). "
+        "При temperature=0 ответы без вызова tools кешируются в Redis (префикс features_chat:)."
+    ),
 )
 async def docintel_chat(req: ChatRequest, service: DocIntelServiceDep) -> ChatResponse:
     return await service.chat_with_tools(req)
