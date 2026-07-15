@@ -16,9 +16,11 @@ class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LLM_")
 
     openai_api_key: SecretStr
+    base_url: str = "https://api.openai.com/v1"
     default_model: str = "gpt-4o-mini"
     request_timeout: float = 30.0
     max_retries: int = 3
+    enable_fallback: bool = True
 
     @field_validator("openai_api_key")
     @classmethod
@@ -96,6 +98,30 @@ class Settings(BaseSettings):
     )
     llm: LLMSettings = Field(default_factory=LLMSettings)
     docintel: DocIntelSettings = Field(default_factory=DocIntelSettings)
+
+    chat_repository: Literal["json", "postgres"] = "json"
+    chat_storage_dir: Path = Path("./var/chats")
+    chat_context_strategy: Literal["sliding", "hybrid"] = "sliding"
+    chat_context_window: int = 10
+    chat_model_context_window: int = 128_000
+    chat_response_tokens: int = 1024
+    chat_safety_margin: int = 256
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/llm_service"
+
+    # Telegram bot / production
+    admin_token: SecretStr = SecretStr("change-me-admin")
+    internal_token: SecretStr = SecretStr("change-me-internal")
+    bot_url: str = "http://bot:9000"
+    admin_chat_id: int | None = None
+    moderation_use_openai: bool = True
+    rate_limit_messages_per_min: int = 15
+
+    @field_validator("admin_chat_id", mode="before")
+    @classmethod
+    def _empty_admin_chat_id(cls, v: Any) -> Any:
+        if v == "" or v is None:
+            return None
+        return v
 
     @model_validator(mode="before")
     @classmethod

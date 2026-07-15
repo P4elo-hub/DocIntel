@@ -19,8 +19,12 @@ BATCH_MAX = 20
 @router.post(
     "",
     response_model=ChatResponse,
-    summary="Синхронный чат",
-    description="Отправляет сообщения в LLM и возвращает полный ответ.",
+    summary="Асинхронный чат — ответ без стриминга (цельный JSON)",
+    description=(
+        "Асинхронный endpoint: сервер не блокируется и обрабатывает параллельные запросы, "
+        "но клиент получает один цельный JSON-ответ после завершения генерации (без SSE/streaming). "
+        "История сообщений передаётся клиентом в теле запроса (stateless)."
+    ),
     responses={
         200: {"description": "Успешный ответ"},
         400: {"description": "Вход отклонён защитным слоем"},
@@ -42,7 +46,14 @@ async def chat_completions(
     return resp
 
 
-@router.post("/stream", summary="Streaming чат через SSE")
+@router.post(
+    "/stream",
+    summary="Асинхронный чат со стримингом (SSE)",
+    description=(
+        "Асинхронный endpoint с потоковой отдачей токенов через Server-Sent Events. "
+        "Клиент получает ответ по частям; в конце — data: [DONE]."
+    ),
+)
 async def chat_stream(req: ChatRequest, service: LLMServiceDep, request: Request):
     validate_chat_messages(req.messages)
 

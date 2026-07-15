@@ -20,6 +20,7 @@ def test_resolve_primary_credentials() -> None:
     assert creds.backend == "primary"
     assert creds.model == "gpt-4o-mini"
     assert creds.api_key == "sk-test"
+    assert creds.base_url == "https://api.openai.com/v1"
 
 
 def test_resolve_ollama_fallback() -> None:

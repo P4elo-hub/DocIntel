@@ -15,7 +15,17 @@ services:
       PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006/v1/traces
       SECURITY_ENABLED: ${SECURITY_ENABLED:-true}
       RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-30}
+      CHAT_REPOSITORY: ${CHAT_REPOSITORY:-postgres}
+      CHAT_STORAGE_DIR: /app/var/chats
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/llm_service
+      BOT_URL: http://bot:9000
+    volumes:
+      - chat_data:/app/var/chats
     depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       phoenix:
@@ -30,6 +40,70 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: llm-service:v1
+    container_name: chat-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      BACKEND_URL: http://app:8000
+    expose:
+      - "9000"
+    depends_on:
+      app:
+        condition: service_healthy
+    command: ["python", "-m", "bot"]
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: llm-service:v1
+    container_name: llm-migrate
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/llm_service
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: llm-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: llm_service
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d llm_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  adminer:
+    image: adminer:4
+    container_name: llm-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
 
   redis:
     image: redis:7.4-alpine
@@ -58,3 +132,5 @@ services:
 volumes:
   redis_data:
   phoenix-data:
+  postgres_data:
+  chat_data:

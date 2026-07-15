@@ -1,9 +1,19 @@
 services:
   app:
+    build:
+      context: .
+      dockerfile: Dockerfile
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
       - ./app:/app/app:ro
+      - ./bot:/app/bot:ro
       - ./feature-methodology-project:/app/feature-methodology-project:ro
+      - ./var/chats:/app/var/chats
     environment:
       LOG_LEVEL: DEBUG
       RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-0}
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile

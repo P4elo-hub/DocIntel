@@ -50,7 +50,7 @@ def resolve_llm_credentials(
             )
         return LlmCredentials(
             api_key=api_key,
-            base_url="https://api.openai.com/v1",
+            base_url=llm.base_url,
             model=llm.default_model,
             backend="primary",
         )

@@ -18,6 +18,10 @@ class LLMContentFilterError(LLMError):
     """Контент заблокирован модерацией."""
 
 
+class VoiceUnavailableError(Exception):
+    """Whisper/OpenAI недоступен — голосовые временно не обрабатываются."""
+
+
 class SecurityValidationError(Exception):
     """Входной промпт отклонён защитным слоем."""
 

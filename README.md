@@ -1,17 +1,62 @@
 # llm-service
 
-FastAPI-сервис для курса «ИИ-разработчик»: generic LLM-чат (`/chat`), DocIntel с tool calling и sectioned-генерацией (`/features/*`), observability (structlog + Phoenix), защитный слой (Б3.8) и eval/garak для проверки качества и безопасности.
+FastAPI-сервис для курса «ИИ-разработчик»: generic LLM-чат (`/chat`), DocIntel с tool calling (`/features/*`), **серверная история чатов и Telegram-бот** (M4.1 / M4Б2), observability (structlog + Phoenix), защитный слой (Б3.8) и eval/garak.
+
+Swagger UI — http://localhost:8000/docs
+
+## Быстрый старт с Telegram-ботом
+
+### 1. Токен бота
+
+Получите токен у [@BotFather](https://t.me/BotFather) (`/newbot`) и вставьте в **`.env`** в корне проекта:
+
+```env
+BOT_TOKEN=7123456789:AAHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+OPENAI_API_KEY=sk-...
+BOT_ADMIN_IDS=123456789
+INTERNAL_TOKEN=<openssl rand -hex 32>
+ADMIN_TOKEN=<openssl rand -hex 32>
+```
+
+| Переменная | Обязательно | Описание |
+|------------|-------------|----------|
+| **`BOT_TOKEN`** | да | Токен от BotFather — без него бот не подключится к Telegram |
+| `OPENAI_API_KEY` | да | Ответы LLM и (опционально) OpenAI Moderation |
+| `BOT_ADMIN_IDS` | для `/stats`, `/broadcast` | Ваш Telegram user id (через запятую) |
+| `INTERNAL_TOKEN` | для `/notify` | Общий секрет backend ↔ bot |
+| `ADMIN_TOKEN` | для admin API | То же значение использует бот для `/stats` |
+
+```bash
+cp .env.example .env
+# отредактируйте .env — минимум BOT_TOKEN и OPENAI_API_KEY
+docker compose up --build
+```
+
+Напишите боту в Telegram: `/start` → текстовое сообщение. Подробная инструкция по Docker, логам, Redis, Postgres и Adminer — **[docs/docker.md](docs/docker.md)**.
+
+### Команды бота
+
+| Команда | Описание |
+|---------|----------|
+| `/start`, `/help` | Старт и справка |
+| `/ask` | Вопрос с выбором темы (FSM) |
+| `/clear` | Очистить историю в backend |
+| `/cancel` | Отменить сценарий |
+| `/operator` | Запрос оператора |
+| `/stats`, `/broadcast` | Только для ID из `BOT_ADMIN_IDS` |
+
+---
 
 ## Что делает система
 
 | Слой | Назначение |
 |------|------------|
 | **Generic chat** | `POST /chat` — прямой вызов OpenAI, кеш Redis при `temperature=0`, retry, streaming/batch |
-| **DocIntel** | `POST /features/chat` — tool calling (search_kb, write_feature_doc, kit-tools); `POST /features/generate` — sectioned-документация по shablon.md |
-| **Security** | Валидация входа, canary, фильтр выхода, маскирование PII в логах, rate limit — на `/chat` и `/features/chat` |
+| **Chat history + bot** | `POST /chats/*` — история в Postgres, multipart/SSE, модерация, rate-limit; **`bot/`** — Telegram-клиент |
+| **DocIntel** | `POST /features/chat` — tool calling; `POST /features/generate` — sectioned-документация |
+| **Security** | Валидация входа, canary, фильтр выхода, PII в логах, rate limit — на `/chat` и `/features/chat` |
 | **Observability** | structlog (JSON), OpenTelemetry → Phoenix, `X-Request-ID`, `X-LLM-Cost-USD` |
-| **Eval** | G-Eval + quality gates для `/features/chat` и `/features/generate` |
-| **Garak** | Сканирование prompt-injection/jailbreak через REST-таргет (baseline / after) |
+| **Eval / Garak** | G-Eval + quality gates; сканирование prompt-injection |
 
 Swagger UI — http://localhost:8000/docs
 
@@ -19,31 +64,21 @@ Swagger UI — http://localhost:8000/docs
 
 ```
 app/
-├── main.py                    # lifespan, middleware, exception handlers
-├── core/                      # Settings, доменные исключения
-├── deps/providers.py          # DI: LLM, cache, DocIntel
-├── routers/
-│   ├── chat.py                # /chat, /chat/stream, /chat/batch
-│   ├── features.py            # /features/generate, /features/chat, …
-│   ├── models.py              # /models
-│   └── health.py              # /health, /ready
-├── services/
-│   ├── llm.py                 # LLMService (generic chat)
-│   ├── security/              # Б3.8: input_validator, output_filter, rate_limit, guards
-│   └── docintel/              # ToolCallClient, orchestrator, DocIntelService
-├── observability/             # structlog, PII-маскирование, tracing → Phoenix
-├── tools/                     # kit-tools, search_kb, write_feature_doc
-├── prompts/                   # Jinja2 system prompts
-└── schemas/
+├── main.py                    # lifespan, middleware, routers
+├── chat/                      # /chats — история, SSE, модерация, media
+├── admin/                     # /chats/admin/* — stats, broadcast, handoff
+├── moderation/, ratelimit/    # каскад модерации, лимит сообщений (Postgres)
+├── routers/                   # /chat, /features/*, health, models
+├── services/                  # llm, docintel, security, notifier, …
+└── observability/             # structlog, PII, tracing → Phoenix
 
-eval/                          # G-Eval прогоны + garak REST-конфиги (см. eval/README.md)
-docs/
-├── security/                  # garak baseline/after отчёты, reports/
-└── observability/
+bot/                           # Telegram: long polling + /notify :9000
+├── __main__.py                # python -m bot
+├── handlers/                  # text, media, commands, fsm, feedback, admin
+└── services/backend_client.py # HTTP-клиент к /chats
 
-tests/                         # unit + integration + cassets (см. tests/README.md)
-scripts/load_test.py           # синтетика rate limit (31-й запрос → 429)
-feature-methodology-project/   # shablon.md + standard kits (DocIntel)
+alembic/                       # миграции Postgres (чаты + production-таблицы)
+docs/docker.md                 # Docker, бот, логи, Redis, Adminer
 ```
 
 ## Запуск локально
@@ -52,33 +87,48 @@ feature-methodology-project/   # shablon.md + standard kits (DocIntel)
 
 ```bash
 uv sync
-cp .env.example .env          # OPENAI_API_KEY / LLM__OPENAI_API_KEY — обязателен
+cp .env.example .env          # BOT_TOKEN, OPENAI_API_KEY — обязательны для бота
 
+# Терминал 1 — API
+uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Терминал 2 — бот (в .env: BACKEND_URL=http://localhost:8000)
+uv run python -m bot
 ```
 
-Redis опционален: без Redis сервис стартует без кеша, `/ready` → `{"status":"degraded","redis":"down"}`.
+Redis опционален для API: без Redis сервис стартует без кеша, `/ready` → `degraded`.
 
 ## Docker Compose
 
 ```bash
-cp .env.example .env
+cp .env.example .env          # BOT_TOKEN + OPENAI_API_KEY
 docker compose up --build
 ```
 
 | Сервис | Порт | Роль |
 |--------|------|------|
-| `app` | 8000 | FastAPI (образ `llm-service:v1`, multi-stage Dockerfile) |
-| `redis` | — | Кеш чата + rate limit |
-| `phoenix` | 6006 | UI трассировок OpenTelemetry |
+| `app` | 8000 | FastAPI |
+| **`bot`** | 9000 (внутри сети) | Telegram long polling + `/notify` |
+| `postgres` | 5432 | История чатов, feedback, rate-limit |
+| `migrate` | — | `alembic upgrade head` |
+| `redis` | — | Кеш `/chat` + HTTP rate limit |
+| `phoenix` | 6006 | Трейсы LLM |
+| `adminer` | 8080 | Веб-UI Postgres |
+
+**Полная инструкция:** [docs/docker.md](docs/docker.md) — токен бота, логи, Redis, Adminer, SQL, troubleshooting.
 
 Переменные в `compose.yaml` (можно переопределить в `.env`):
 
 | Переменная | Default в compose | Назначение |
 |------------|-------------------|------------|
-| `SECURITY_ENABLED` | `true` | Защитный слой на `/chat` и `/features/chat` |
-| `RATE_LIMIT_PER_MIN` | `30` | Лимит запросов/мин на IP или `X-User-ID` (0 = выкл.) |
-| `REDIS_URL` | `redis://redis:6379/0` | Кеш и счётчики rate limit |
+| `CHAT_REPOSITORY` | `postgres` | Хранилище чатов: `postgres` или `json` |
+| `DATABASE_URL` | `...@postgres:5432/llm_service` | Postgres в Docker-сети |
+| `BOT_URL` | `http://bot:9000` | Backend → bot `/notify` |
+| `SECURITY_ENABLED` | `true` | Защитный слой на `/chat`, `/features/chat` |
+| `RATE_LIMIT_PER_MIN` | `30` | HTTP rate limit (Redis) |
+| `RATE_LIMIT_MESSAGES_PER_MIN` | из `.env` (15) | Лимит сообщений Telegram на user (Postgres) |
+| `REDIS_URL` | `redis://redis:6379/0` | Кеш и HTTP rate limit |
 
 `compose.override.yaml` (dev): hot-reload, `LOG_LEVEL=DEBUG`, `RATE_LIMIT_PER_MIN=0`.
 
@@ -273,6 +323,10 @@ curl -s http://localhost:8000/models
 | `SECURITY_ENABLED` | `true` | Защитный слой |
 | `RATE_LIMIT_PER_MIN` | `30` | Rate limit (0 = выкл.) |
 | `PHOENIX_COLLECTOR_ENDPOINT` | — | OTLP traces → Phoenix |
+| `BOT_TOKEN` | — | Telegram BotFather (см. быстрый старт выше) |
+| `BOT_ADMIN_IDS` | — | Telegram user id админов бота |
+| `INTERNAL_TOKEN` / `ADMIN_TOKEN` | — | Секреты backend ↔ bot и admin API |
+| `MODERATION_USE_OPENAI` | `true` | OpenAI Moderation для `/chats/.../messages` |
 | `DOCINTEL__MAX_TOOL_ROUNDS` | `8` | Лимит раундов tool calling |
 | `DOCINTEL__FALLBACK_BACKEND` | `ollama` | Fallback при ошибке primary |
 

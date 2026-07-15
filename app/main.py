@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from openai import AsyncOpenAI
 
 try:
     from redis.asyncio import Redis
@@ -24,8 +23,12 @@ from app.core.exceptions import (
 )
 from app.observability.logging import get_logger, observability_middleware, setup_logging
 from app.observability.tracing import setup_tracing
+from app.admin.routes import router as admin_router
+from app.chat import routes as chat_history
+from app.db.session import create_db_engine, create_session_factory
 from app.routers import chat, features, health, models
 from app.services.docintel import ToolCallClient
+from app.services.llm_client import create_fallback_llm_client
 from app.services.security.rate_limit import rate_limit_middleware
 
 settings = get_settings()
@@ -40,11 +43,7 @@ async def lifespan(app: FastAPI):
     app.state.canary = f"CANARY_{secrets.token_hex(4)}"
     logger.info("security_canary_initialized", canary=app.state.canary)
 
-    app.state.llm = AsyncOpenAI(
-        api_key=settings.llm.openai_api_key.get_secret_value(),
-        timeout=settings.llm.request_timeout,
-        max_retries=settings.llm.max_retries,
-    )
+    app.state.llm = create_fallback_llm_client(settings)
 
     app.state.docintel_client = None
     try:
@@ -58,6 +57,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("docintel_unavailable", error=str(e))
 
+    app.state.db_engine = None
+    app.state.db_session_factory = None
+    if settings.chat_repository == "postgres":
+        try:
+            app.state.db_engine = create_db_engine(settings.database_url)
+            app.state.db_session_factory = create_session_factory(app.state.db_engine)
+            logger.info("postgres_ready", repository=settings.chat_repository)
+        except Exception as e:
+            logger.warning("postgres_unavailable", error=str(e))
+
     app.state.redis = None
     if Redis is not None:
         try:
@@ -70,7 +79,11 @@ async def lifespan(app: FastAPI):
     yield
 
     try:
-        await app.state.llm.close()
+        llm = app.state.llm
+        if hasattr(llm, "aclose"):
+            await llm.aclose()
+        else:
+            await llm.close()
     except Exception:
         pass
     try:
@@ -81,6 +94,11 @@ async def lifespan(app: FastAPI):
     if app.state.redis is not None:
         try:
             await app.state.redis.close()
+        except Exception:
+            pass
+    if app.state.db_engine is not None:
+        try:
+            await app.state.db_engine.dispose()
         except Exception:
             pass
     from app.observability.tracing import flush_tracing
@@ -159,6 +177,8 @@ async def handle_validation(request, exc: RequestValidationError):
     )
 
 
+app.include_router(chat_history.router)
+app.include_router(admin_router)
 app.include_router(chat.router)
 app.include_router(features.router)
 app.include_router(models.router)

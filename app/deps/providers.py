@@ -54,3 +54,10 @@ def get_docintel_service(
 
 LLMServiceDep = Annotated[LLMService, Depends(get_llm_service)]
 DocIntelServiceDep = Annotated[DocIntelService, Depends(get_docintel_service)]
+
+
+def get_session_factory(request: Request):
+    return getattr(request.app.state, "db_session_factory", None)
+
+
+SessionFactoryDep = Annotated[object, Depends(get_session_factory)]

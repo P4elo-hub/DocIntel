@@ -20,6 +20,17 @@ _PII_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("ORDER", re.compile(r"\b(?:ORD|ЗК|ORDER)[\-\s]?\d{6,12}\b", re.IGNORECASE)),
 ]
 
+_MASK_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"[\w.\-]+@[\w.\-]+\.\w+"), "[EMAIL]"),
+    (re.compile(r"\b\d{16}\b"), "[CARD]"),
+    (
+        re.compile(
+            r"\+?\d{1,3}[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}"
+        ),
+        "[PHONE]",
+    ),
+]
+
 _PRESIDIO_LONG_PROMPT_THRESHOLD = 500
 _presidio_anonymizer: Callable[[str], str] | None = None
 
@@ -33,6 +44,15 @@ def redact_pii(text: str) -> str:
     for label, pattern in _PII_PATTERNS:
         result = pattern.sub(f"[{label}]", result)
     return result
+
+
+def mask_pii(text: str) -> str:
+    """Маскирование PII для admin /export (упрощённый набор паттернов)."""
+    if not text:
+        return text
+    for pat, repl in _MASK_PATTERNS:
+        text = pat.sub(repl, text)
+    return text
 
 
 def _init_presidio() -> Callable[[str], str] | None:
