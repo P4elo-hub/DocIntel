@@ -1,6 +1,6 @@
 # llm-service
 
-FastAPI-сервис для курса «ИИ-разработчик»: generic LLM-чат (`/chat`), DocIntel с tool calling (`/features/*`), **серверная история чатов и Telegram-бот** (M4.1 / M4Б2), observability (structlog + Phoenix), защитный слой (Б3.8) и eval/garak.
+FastAPI-сервис для курса «ИИ-разработчик»: generic LLM-чат (`/chat`), DocIntel с tool calling (`/features/*`), **серверная история чатов и Telegram-бот** (M4.1 / M4Б2), **RAG по базе знаний на LlamaIndex + Qdrant** (Б5, `/rag/query`, встроен в чат-бота), observability (structlog + Phoenix), защитный слой (Б3.8) и eval/garak.
 
 Swagger UI — http://localhost:8000/docs
 
@@ -54,6 +54,7 @@ docker compose up --build
 | **Generic chat** | `POST /chat` — прямой вызов OpenAI, кеш Redis при `temperature=0`, retry, streaming/batch |
 | **Chat history + bot** | `POST /chats/*` — история в Postgres, multipart/SSE, модерация, rate-limit; **`bot/`** — Telegram-клиент |
 | **DocIntel** | `POST /features/chat` — tool calling; `POST /features/generate` — sectioned-документация |
+| **RAG** | `POST /rag/query` — ответ по базе знаний с цитатами; индексация в Qdrant через LlamaIndex; тот же RAG встроен в Telegram-бота (Вариант C) |
 | **Security** | Валидация входа, canary, фильтр выхода, PII в логах, rate limit — на `/chat` и `/features/chat` |
 | **Observability** | structlog (JSON), OpenTelemetry → Phoenix, `X-Request-ID`, `X-LLM-Cost-USD` |
 | **Eval / Garak** | G-Eval + quality gates; сканирование prompt-injection |
@@ -65,11 +66,11 @@ Swagger UI — http://localhost:8000/docs
 ```
 app/
 ├── main.py                    # lifespan, middleware, routers
-├── chat/                      # /chats — история, SSE, модерация, media
+├── chat/                      # /chats — история, SSE, модерация, media, RAG-контекст
 ├── admin/                     # /chats/admin/* — stats, broadcast, handoff
 ├── moderation/, ratelimit/    # каскад модерации, лимит сообщений (Postgres)
-├── routers/                   # /chat, /features/*, health, models
-├── services/                  # llm, docintel, security, notifier, …
+├── routers/                   # /chat, /features/*, /rag, /documents, health, models
+├── services/                  # llm, docintel, rag, ingestion, vector_store, embeddings, …
 └── observability/             # structlog, PII, tracing → Phoenix
 
 bot/                           # Telegram: long polling + /notify :9000
@@ -78,7 +79,9 @@ bot/                           # Telegram: long polling + /notify :9000
 └── services/backend_client.py # HTTP-клиент к /chats
 
 alembic/                       # миграции Postgres (чаты + production-таблицы)
-docs/docker.md                 # Docker, бот, логи, Redis, Adminer
+data/                          # корпуса RAG: rag-block-03 (sample), my-kb (личная, gitignore)
+docs/docker.md                 # Docker, бот, Qdrant, логи, Redis, Adminer
+docs/rag.md                    # RAG: LlamaIndex, Qdrant, чанкинг, метаданные, reindex
 ```
 
 ## Запуск локально
@@ -113,6 +116,7 @@ docker compose up --build
 | `postgres` | 5432 | История чатов, feedback, rate-limit |
 | `migrate` | — | `alembic upgrade head` |
 | `redis` | — | Кеш `/chat` + HTTP rate limit |
+| **`qdrant`** | 6333 / 6334 | Векторное хранилище RAG (эмбеддинги + метаданные) |
 | `phoenix` | 6006 | Трейсы LLM |
 | `adminer` | 8080 | Веб-UI Postgres |
 
@@ -133,6 +137,74 @@ docker compose up --build
 `compose.override.yaml` (dev): hot-reload, `LOG_LEVEL=DEBUG`, `RATE_LIMIT_PER_MIN=0`.
 
 Garak и eval в образ **не входят** — это dev/host-инструменты; в контейнер копируется только `app/` и `feature-methodology-project/`.
+
+## RAG (база знаний)
+
+RAG на **LlamaIndex + Qdrant**: корпус markdown-документов индексируется в
+векторное хранилище Qdrant, а ответ строится строго по найденному контексту с
+цитатами `[n]`. Тот же RAG встроен в Telegram-бота (Вариант C): при
+`CHAT_RAG_ENABLED=true` каждый вопрос (в т.ч. голосовой — по транскрипту)
+обогащается найденными источниками, и модель отвечает по базе знаний.
+
+**Пайплайн:** `SimpleDirectoryReader → header-aware чанкинг → text-embedding-3-small
+→ Qdrant → dense-поиск (top_k) → (опц. reranker) → LLM с цитатами`. Порог
+`RAG_SCORE_THRESHOLD` + инструкция «отвечай только по источникам» отсекают выдумки.
+
+| Компонент | Где |
+|-----------|-----|
+| Ретрив + синтез (LlamaIndex) | `app/services/rag.py` |
+| Индексация корпуса, метаданные, дедупликация | `app/services/ingestion.py` |
+| Векторное хранилище (Qdrant) | `app/services/vector_store.py`, сервис `qdrant` в Docker |
+| Встраивание RAG в чат/бота | `app/chat/service.py` |
+| Bare-metal сравнение (без фреймворка) | `app/services/rag_baremetal.py` |
+
+**Корпуса** в `data/`:
+
+- `data/rag-block-03/` — учебный sample-корпус (10 документов), едет в репозиторий;
+- `data/my-kb/` — личная база знаний (SIHIST «История операций»), **локальная**,
+  в git не коммитится (`.gitignore`). Внутри `_actual/` — курируемые «источники
+  правды» (глоссарий, интеграции, лента), имеющие приоритет над отдельными фичами.
+
+### Эндпоинты
+
+```bash
+# Поиск/ответ по базе знаний с цитатами
+curl -s -X POST http://localhost:8000/rag/query \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"со сколькими сервисами интегрируется история операций?"}'
+
+# Загрузить документ в индекс
+curl -s -X POST http://localhost:8000/documents/upload -F 'file=@doc.md'
+
+# Переиндексация: full (снести и заново) | incremental (по хешам) | files
+curl -s -X POST http://localhost:8000/documents/reindex \
+  -H 'Content-Type: application/json' -d '{"mode":"full"}'
+```
+
+`/rag/query` показывает `top_score` / `sources` / `snippet` — так видно, где
+проблема: в поиске (крутить `RAG_RETRIEVE_TOP_K`, чанкинг) или в генерации (промпт).
+
+### Ключевые переменные (`.env`)
+
+| Переменная | Default | Назначение |
+|------------|---------|------------|
+| `CHAT_RAG_ENABLED` | `true` | Встроенный RAG в чат/бота (Вариант C) |
+| `QDRANT_URL` | `http://qdrant:6333` | Qdrant (в Docker-сети; локально `localhost:6333`) |
+| `RAG_DATA_DIR` | `data/rag-block-03` | Каталог корпуса (для личной базы — `data/my-kb`) |
+| `RAG_COLLECTION` | `rag_block_03` | Коллекция Qdrant (LlamaIndex) |
+| `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `text-embedding-3-small` / `1536` | Эмбеддинги |
+| `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` | `1024` / `128` | Размер чанка |
+| `RAG_CHUNK_BY_HEADINGS` | `true` | Нарезка markdown по заголовкам |
+| `RAG_RETRIEVE_TOP_K` / `RAG_RERANK_TOP_N` | `25` / `10` | Ширина поиска / сколько в контекст |
+| `RAG_SCORE_THRESHOLD` | `0.3` | Ниже порога → «в базе не нашёл» |
+| `RAG_SKIP_DEPRECATED` | `true` | Не индексировать устаревшее (`superseded_by:`, «Старая Лента») |
+| `RAG_USE_RERANKER` / `RAG_USE_HYBRID` | `false` | Cross-encoder / dense+BM25 (см. `docs/rag.md`) |
+
+> Смена `chunk_size`, hybrid или `skip_deprecated` требует **полного reindex**
+> существующей коллекции (`{"mode":"full"}`).
+
+**Подробно** — [docs/rag.md](docs/rag.md): чанкинг, метаданные, дедупликация,
+reranker/hybrid, сравнение LlamaIndex vs bare-metal.
 
 ## Защитный слой (Б3.8)
 
@@ -320,6 +392,8 @@ curl -s http://localhost:8000/models
 | `OPENAI_API_KEY` / `LLM__OPENAI_API_KEY` | — | Ключ OpenAI (обязателен) |
 | `LLM__DEFAULT_MODEL` | `gpt-4o-mini` | Модель по умолчанию |
 | `REDIS_URL` | `redis://localhost:6379/0` | Кеш + rate limit |
+| `QDRANT_URL` | `http://localhost:6333` | Векторное хранилище RAG (в Docker — `http://qdrant:6333`) |
+| `CHAT_RAG_ENABLED` | `true` | Встроенный RAG в чат/бота (см. раздел RAG и `docs/rag.md`) |
 | `SECURITY_ENABLED` | `true` | Защитный слой |
 | `RATE_LIMIT_PER_MIN` | `30` | Rate limit (0 = выкл.) |
 | `PHOENIX_COLLECTOR_ENDPOINT` | — | OTLP traces → Phoenix |

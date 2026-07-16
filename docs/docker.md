@@ -1,6 +1,6 @@
-# Docker: полный стек (API, Telegram-бот, Postgres, Redis, Phoenix)
+# Docker: полный стек (API, Telegram-бот, Postgres, Redis, Qdrant, Phoenix)
 
-Одна команда поднимает FastAPI, Telegram-бот, Postgres, Redis, Phoenix, Adminer и одноразовый `migrate`.
+Одна команда поднимает FastAPI, Telegram-бот, Postgres, Redis, **Qdrant** (векторное хранилище RAG), Phoenix, Adminer и одноразовый `migrate`.
 
 ## Быстрый старт
 
@@ -39,7 +39,7 @@ ADMIN_CHAT_ID=-1001234567890
 docker compose up --build
 ```
 
-Порядок старта: `postgres` → `migrate` (Alembic) → `app` (healthcheck) → `bot`.
+Порядок старта: `postgres` + `qdrant` (healthcheck) → `migrate` (Alembic) → `app` (healthcheck) → `bot`.
 
 ### 4. Проверка в Telegram
 
@@ -58,6 +58,7 @@ docker compose up --build
 | **Postgres** | `llm-postgres` | `localhost:5432` | История чатов, feedback, rate-limit, alerts |
 | **Adminer** | `llm-adminer` | http://localhost:8080 | Веб-UI для Postgres |
 | **Redis** | `llm-redis` | внутри сети `redis:6379` | Кеш `/chat`, HTTP rate limit (Б3.8) |
+| **Qdrant** | `llm-qdrant` | http://localhost:6333 (REST), `6334` (gRPC) | Векторное хранилище RAG: эмбеддинги + метаданные |
 | **Phoenix** | `llm-phoenix` | http://localhost:6006 | Трейсы LLM (OpenTelemetry) |
 | **migrate** | `llm-migrate` | — | `alembic upgrade head`, завершается и выходит |
 
@@ -67,6 +68,7 @@ Volumes (данные сохраняются между `docker compose down`):
 |--------|------------|
 | `postgres_data` | БД Postgres (чаты, сообщения, feedback) |
 | `redis_data` | Redis AOF/RDB |
+| `qdrant_storage` | Коллекции Qdrant (векторы RAG + payload) |
 | `phoenix-data` | Данные Phoenix |
 | `chat_data` | JSON-чаты, если `CHAT_REPOSITORY=json` |
 
@@ -200,6 +202,71 @@ docker exec -it llm-redis redis-cli KEYS '*'
 
 ---
 
+## Qdrant (векторное хранилище RAG)
+
+Qdrant хранит эмбеддинги корпуса и метаданные для RAG. Сервис `app` ходит в него
+по `QDRANT_URL` (в Docker-сети — `http://qdrant:6333`), стартует только когда
+Qdrant `healthy` (`depends_on`). Данные лежат в volume `qdrant_storage` и
+переживают `docker compose down` (но не `down -v`).
+
+| Параметр | Значение |
+|----------|----------|
+| Образ | `qdrant/qdrant:v1.14.0` |
+| REST API / Dashboard | http://localhost:6333 (`/dashboard`) |
+| gRPC | `localhost:6334` |
+| Volume | `qdrant_storage:/qdrant/storage` |
+| В сети для `app` | `QDRANT_URL=http://qdrant:6333` |
+
+**Веб-дашборд:** http://localhost:6333/dashboard — коллекции, точки, поиск.
+
+```bash
+# Список коллекций
+curl -s http://localhost:6333/collections | jq
+
+# Инфо по коллекции RAG (число точек, конфиг вектора)
+curl -s http://localhost:6333/collections/rag_block_03 | jq '.result.points_count, .result.config.params'
+
+# Здоровье
+curl -s http://localhost:6333/healthz
+```
+
+### Индексация корпуса
+
+Корпус (каталог из `RAG_DATA_DIR`) индексируется в Qdrant при старте, если
+коллекция пуста. Управление руками — через backend:
+
+```bash
+# Полная переиндексация (снести коллекцию + docstore и построить заново)
+curl -s -X POST http://localhost:8000/documents/reindex \
+  -H 'Content-Type: application/json' -d '{"mode":"full"}'
+
+# Инкрементально (только новые/изменённые документы по хешам)
+curl -s -X POST http://localhost:8000/documents/reindex \
+  -H 'Content-Type: application/json' -d '{"mode":"incremental"}'
+```
+
+Прогресс — в логах `app` (`ingestion: ...`), готовность RAG — событие `rag_ready`.
+Проверить поиск отдельно от генерации: `POST /rag/query` (см. **[rag.md](rag.md)**).
+
+> Смена `RAG_CHUNK_SIZE`, `RAG_CHUNK_BY_HEADINGS`, `RAG_SKIP_DEPRECATED` или
+> включение hybrid требует **полного** reindex (`{"mode":"full"}`) — иначе старые
+> чанки в коллекции останутся нетронутыми.
+
+### Ключевые переменные RAG (`.env`)
+
+| Переменная | Default | Назначение |
+|------------|---------|------------|
+| `QDRANT_URL` | `http://qdrant:6333` | Адрес Qdrant в Docker-сети |
+| `CHAT_RAG_ENABLED` | `true` | Встроить RAG в чат/бота (Вариант C) |
+| `RAG_DATA_DIR` | `data/rag-block-03` | Каталог корпуса (личная база — `data/my-kb`) |
+| `RAG_COLLECTION` | `rag_block_03` | Имя коллекции Qdrant |
+| `RAG_RETRIEVE_TOP_K` / `RAG_RERANK_TOP_N` | `25` / `10` | Ширина поиска / в контекст LLM |
+| `RAG_SCORE_THRESHOLD` | `0.3` | Ниже → «в базе не нашёл» |
+
+Полный список и тюнинг качества — **[rag.md](rag.md)**.
+
+---
+
 ## Логи и отладка
 
 ```bash
@@ -215,8 +282,8 @@ docker compose logs -f bot
 # Миграции (один раз при старте)
 docker compose logs migrate
 
-# Postgres / Redis
-docker compose logs -f postgres redis
+# Postgres / Redis / Qdrant
+docker compose logs -f postgres redis qdrant
 ```
 
 **Что искать:**
@@ -264,6 +331,7 @@ CHAT_REPOSITORY=postgres
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/llm_service
 BOT_URL=http://bot:9000
 REDIS_URL=redis://redis:6379/0
+QDRANT_URL=http://qdrant:6333
 ```
 
 Переключить хранилище чатов на JSON:
@@ -341,3 +409,6 @@ curl -N -X POST "http://localhost:8000/chats/${CHAT_ID}/messages" \
 | Adminer «Connection refused» | Сервер = `postgres`, не `localhost` |
 | `503 feedback requires postgres` | `CHAT_REPOSITORY=postgres`, миграции применены |
 | Бот не видит backend | В Docker `BACKEND_URL=http://app:8000`; локально `http://localhost:8000` |
+| RAG отвечает «в базе не нашёл» / `503` на `/rag/query` | Qdrant `healthy` (`docker compose ps`), коллекция не пуста (`/collections/<name>`), при необходимости reindex `{"mode":"full"}` |
+| Пустая коллекция после `down -v` | Volume `qdrant_storage` удалён — переиндексируйте (`/documents/reindex`) |
+| `app` не стартует, ждёт Qdrant | Qдрант не `healthy` — смотрите `docker compose logs qdrant`, порт `6333` |
