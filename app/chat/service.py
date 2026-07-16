@@ -1,3 +1,4 @@
+import re
 from collections.abc import AsyncIterator
 from uuid import UUID
 
@@ -6,7 +7,7 @@ from fastapi import UploadFile
 
 from app.chat.context import build_sliding_context
 from app.chat.domain import Chat, ChatMessage
-from app.chat.media import VOICE_UNAVAILABLE_MESSAGE, media_to_part
+from app.chat.media import VOICE_UNAVAILABLE_MESSAGE, extract_rag_query, media_to_part
 from app.core.exceptions import VoiceUnavailableError
 from app.chat.prompt_selection import choose_by_split
 from app.chat.repository import ChatRepository, SystemPromptRepository
@@ -15,6 +16,20 @@ from app.moderation.domain import ModerationResult
 from app.moderation.service import ModerationService
 
 logger = structlog.get_logger("chat-service")
+
+
+def _filter_used_sources(answer: str, sources: list) -> list:
+    """Оставляет только те источники, чьи номера [n] встретились в ответе LLM.
+
+    Модель могла использовать не все переданные чанки; показываем в футере
+    «Источники» лишь реально процитированные, чтобы не вводить в заблуждение.
+    """
+    if not sources:
+        return []
+    cited = {int(n) for n in re.findall(r"\[(\d+)\]", answer)}
+    if not cited:
+        return []
+    return [s for s in sources if s.get("id") in cited]
 
 
 class ChatService:
@@ -30,6 +45,8 @@ class ChatService:
         safety_margin: int = 256,
         moderation: ModerationService | None = None,
         prompt_repo: SystemPromptRepository | None = None,
+        rag_service=None,
+        rag_enabled: bool = False,
     ) -> None:
         self.repository = repository
         self.llm = llm_client
@@ -40,6 +57,8 @@ class ChatService:
         self.safety_margin = safety_margin
         self.moderation = moderation
         self.prompt_repo = prompt_repo
+        self.rag_service = rag_service
+        self.rag_enabled = rag_enabled
 
     async def create_chat(
         self,
@@ -89,6 +108,53 @@ class ChatService:
         if chosen is None:
             return None, None
         return chosen.id, chosen.body
+
+    async def _retrieve_rag(self, question: str) -> dict:
+        """Вариант C: ищет контекст в базе знаний. Сбой/незрелый индекс —
+        не роняет чат: возвращаем пустой результат, отвечаем без цитат."""
+        if not self.rag_enabled or self.rag_service is None or not question.strip():
+            return {"context_str": "", "sources": []}
+        try:
+            result = await self.rag_service.retrieve_context(question)
+        except Exception as exc:
+            logger.warning("rag_retrieve_failed", error=str(exc))
+            return {"context_str": "", "sources": []}
+        if not result.get("confident"):
+            return {"context_str": "", "sources": []}
+        return {
+            "context_str": result.get("context_str", ""),
+            "sources": result.get("sources", []),
+        }
+
+    @staticmethod
+    def _rag_context_message(context_str: str) -> dict:
+        return {
+            "role": "system",
+            "content": (
+                "Ниже — пронумерованные источники из корпоративной базы знаний "
+                "по продукту «История операций».\n\n"
+                "Правила ответа:\n"
+                "1. Отвечай ТОЛЬКО на основе этих источников. Не добавляй факты "
+                "из собственных знаний и ничего не выдумывай.\n"
+                "2. После каждого факта ставь номер источника в квадратных "
+                "скобках, например [1] или [2].\n"
+                "3. Если в источниках описаны и старое состояние (AS IS), и новое "
+                "(TO BE) — отвечай по TO BE как по актуальному; AS IS упоминай "
+                "только если об этом прямо спрашивают. При противоречии между "
+                "источниками предпочитай более новый (TO BE, свежая версия релиза, "
+                "не помеченный как устаревший).\n"
+                "4. Если ответа в источниках нет или они не относятся к вопросу — "
+                "честно напиши: «В базе знаний я не нашёл ответа на этот вопрос», "
+                "и не придумывай цитат.\n"
+                "5. Термины и аббревиатуры (например, DCA, БПХ, BC) понимай в "
+                "контексте продукта «История операций» по этим источникам. Если "
+                "твои предыдущие ответы в этом диалоге противоречат источникам — "
+                "источники приоритетны, игнорируй прежние ответы и не повторяй их.\n\n"
+                "---------------------\n"
+                f"{context_str}\n"
+                "---------------------"
+            ),
+        }
 
     async def send_message(
         self,
@@ -140,8 +206,24 @@ class ChatService:
             system_prompt_body=prompt_body,
         )
 
+        # Вариант C: подмешиваем найденные в базе знаний чанки как system-контекст.
+        # fit_to_budget сохраняет system-сообщения, поэтому контекст не обрежется.
+        rag = await self._retrieve_rag(extract_rag_query(user_content, media_refs))
+        rag_sources = rag["sources"]
+        rag_msg = None
+        if rag["context_str"]:
+            rag_msg = self._rag_context_message(rag["context_str"])
+            messages.append(rag_msg)
+
         budget = self.model_context_window - self.response_tokens - self.safety_margin
         messages = fit_to_budget(messages, budget)
+
+        # fit_to_budget поднимает все system-сообщения в начало. Для RAG это плохо:
+        # блок источников оказывается далеко от вопроса, а свежие реплики диалога
+        # перевешивают. Ставим источники вплотную перед последним вопросом.
+        if rag_msg is not None and rag_msg in messages:
+            messages.remove(rag_msg)
+            messages.insert(max(len(messages) - 1, 0), rag_msg)
 
         stream = await self.llm.chat.completions.create(
             model=self.default_model,
@@ -168,15 +250,21 @@ class ChatService:
 
         assistant_text = "".join(parts)
         if assistant_text:
+            # Оставляем в тексте только цитаты, реально использованные моделью:
+            # источник без [n] в ответе не показываем, чтобы футер не врал.
+            used_sources = _filter_used_sources(assistant_text, rag_sources)
             assistant_message = ChatMessage(
                 chat_id=chat_id,
                 role="assistant",
                 content=assistant_text,
+                sources=used_sources or None,
                 tokens=count_tokens([{"role": "assistant", "content": assistant_text}]),
                 prompt_id=prompt_id,
             )
             saved = await self.repository.append_message(chat_id, assistant_message)
             yield {"type": "message_saved", "message_id": str(saved.id)}
+            if used_sources:
+                yield {"type": "sources", "sources": used_sources}
             if interrupted:
                 logger.info(
                     "chat_partial_response_saved",

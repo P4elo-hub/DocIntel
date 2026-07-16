@@ -8,7 +8,12 @@ import pytest
 from docx import Document as DocxDocument
 from pypdf import PdfWriter
 
-from app.chat.media import extract_docx_text, extract_pdf_text, media_to_part
+from app.chat.media import (
+    extract_docx_text,
+    extract_pdf_text,
+    extract_rag_query,
+    media_to_part,
+)
 
 
 class FakeUploadFile:
@@ -155,3 +160,27 @@ def test_extract_docx_text_with_table(tmp_path):
     text = extract_docx_text(out.read_bytes())
     assert "A | B" in text
     assert "C | D" in text
+
+
+def test_extract_rag_query_prefers_user_content():
+    media_refs = {
+        "part": {
+            "type": "text",
+            "text": "[пользователь сказал голосом]:\nтранскрипт",
+        },
+    }
+    assert extract_rag_query("подпись", media_refs) == "подпись"
+
+
+def test_extract_rag_query_from_voice_transcript():
+    media_refs = {
+        "part": {
+            "type": "text",
+            "text": "[пользователь сказал голосом]:\nсколько сервисов?",
+        },
+    }
+    assert extract_rag_query("", media_refs) == "сколько сервисов?"
+
+
+def test_extract_rag_query_empty_without_media():
+    assert extract_rag_query("", None) == ""

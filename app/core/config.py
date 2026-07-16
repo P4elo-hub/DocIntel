@@ -106,6 +106,10 @@ class Settings(BaseSettings):
     chat_model_context_window: int = 128_000
     chat_response_tokens: int = 1024
     chat_safety_margin: int = 256
+    # Вариант C: встроенный RAG в чат-конвейер. Перед ответом чат ищет
+    # релевантные чанки в базе знаний и подмешивает их в контекст с цитатами.
+    # Выключить (false) — обычный чат без обращения к базе знаний.
+    chat_rag_enabled: bool = True
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/llm_service"
 
     # Telegram bot / production
@@ -115,6 +119,70 @@ class Settings(BaseSettings):
     admin_chat_id: int | None = None
     moderation_use_openai: bool = True
     rate_limit_messages_per_min: int = 15
+
+    # Qdrant ------------------------------------------------------------
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: SecretStr | None = None
+    qdrant_collection: str = "documents"
+    embedding_dim: int = 1536
+    embedding_model: str = "text-embedding-3-small"
+
+    # RAG ---------------------------------------------------------------
+    # Корпус для индексации и отдельные коллекции под LlamaIndex и bare-metal:
+    # один корпус и одна embed-модель, но раскладка payload разная.
+    rag_data_dir: Path = Path("data/rag-block-03")
+    rag_collection: str = "rag_block_03"
+    rag_collection_bare: str = "rag_block_03_bare"
+    rag_llm_model: str = "gpt-5.4-mini"
+    rag_top_k: int = 3
+    rag_chunk_size: int = 1024
+    rag_chunk_overlap: int = 128
+    # Резать markdown по заголовкам (раздел фичи целиком), а не по предложениям.
+    rag_chunk_by_headings: bool = True
+    # Пропускать при индексации документы с метаданным deprecated=true.
+    rag_skip_deprecated: bool = True
+    # OpenAI embeddings: не больше ~300k токенов на HTTP-запрос. На больших .md
+    # (таблицы, длинные спеки) batch=100 легко превышает лимит — держим ниже.
+    rag_embed_batch_size: int = 32
+    # Сколько документов прогонять за один pipeline.run (прогресс + частичный upsert).
+    rag_ingest_doc_batch_size: int = 25
+    # Если top-1 score ниже порога — ответа в корпусе нет, отдаём честный fallback.
+    rag_score_threshold: float = 0.3
+    # Корпоративный RAG: достаём широко, оставляем top_n лучших.
+    rag_retrieve_top_k: int = 25
+    rag_rerank_top_n: int = 10
+    # Реранкер и гибридный поиск — опциональные тяжёлые зависимости, в репо не
+    # держим хард-депендой. Включаются флагом, тогда нужны extras:
+    #   reranker -> pip install sentence-transformers torch  (модель ~600 МБ)
+    #   hybrid   -> pip install fastembed
+    # По умолчанию выключены; dense-поиск с обрезкой до rag_rerank_top_n работает и так.
+    # Реранкер выключен по умолчанию: веса (~2.2 ГБ) качаются с HF при первом
+    # build() и блокируют готовность RAG. Включать с HF-кэш-томом (см. docs/rag.md).
+    rag_use_reranker: bool = False
+    rag_reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    # Гибрид выключен: llama-index-vector-stores-qdrant 0.8.8 в hybrid-режиме шлёт
+    # устаревший search_batch без имени вектора → Qdrant 400. Требует апгрейда
+    # qdrant-client>=1.16 + интеграции >=0.10 (сейчас пин <1.16).
+    rag_use_hybrid: bool = False
+    rag_sparse_model: str = "Qdrant/bm25"
+    # Контроль доступа на уровне поиска: фильтр visibility="internal" до ретрива.
+    # Включать только когда корпус проиндексирован через IngestionService
+    # (он проставляет visibility); на «голой» коллекции фильтр вернёт пусто.
+    rag_restrict_to_internal: bool = False
+
+    # Phoenix-трейсинг LlamaIndex ---------------------------------------
+    # Инструментирование LlamaIndex в Phoenix — опциональный runtime-путь,
+    # группа зависимостей `tracing` (uv sync --extra tracing). По умолчанию
+    # выключено; включается PHOENIX_ENABLED=true, тогда нужен сервис phoenix.
+    phoenix_enabled: bool = False
+
+    # Оценка качества (RAGAS) -------------------------------------------
+    # Судья и эмбеддинги для офлайн-оценки (scripts/run_eval.py,
+    # generate_testset.py) — группа зависимостей `eval`. Судья отделён от
+    # production-LLM в /rag/query (rag_llm_model): роли разные, путать нельзя.
+    anthropic_api_key: SecretStr | None = None
+    eval_judge_provider: Literal["anthropic", "openai"] = "anthropic"
+    eval_judge_model: str = "claude-sonnet-4-6"
 
     @field_validator("admin_chat_id", mode="before")
     @classmethod

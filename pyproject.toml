@@ -24,6 +24,41 @@ dependencies = [
     "pypdf>=5.0",
     "python-docx>=1.1",
     "telegramify-markdown>=0.5",
+    "qdrant-client>=1.14,<1.16",
+    "tqdm>=4.66",
+    "llama-index>=0.14.22",
+    "llama-index-vector-stores-qdrant>=0.8.8",
+    "llama-index-readers-file>=0.6.0",
+]
+
+[project.optional-dependencies]
+# Улучшенный retrieval: реранкер (cross-encoder) и гибридный поиск (dense+BM25).
+# Тяжёлая группа (torch + sentence-transformers ~2 ГБ). Ставится:
+#   uv sync --extra retrieval
+# Нужна, когда RAG_USE_RERANKER=true и/или RAG_USE_HYBRID=true.
+retrieval = [
+    "sentence-transformers>=3.0",
+    "torch>=2.2",
+    "fastembed>=0.3",
+]
+# Трейсинг LlamaIndex в Phoenix — runtime-путь, по умолчанию выключен
+# (PHOENIX_ENABLED=false). Ставится отдельно: `uv sync --extra tracing`.
+# Без него сервис работает, просто без спанов RAG-запросов.
+tracing = [
+    "openinference-instrumentation-llama-index>=3,<4",
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp>=1.20",
+]
+# Офлайн-оценка качества RAG (scripts/run_eval.py, generate_testset.py) — тяжёлая
+# группа, в проде не нужна. Ставится: `uv sync --extra eval`. langchain-community
+# тянется ядром RAGAS; без верхней границы свежие 0.4.x ломают импорт vertexai.
+eval = [
+    "ragas>=0.4,<0.5",
+    "langchain-community<0.4",
+    "anthropic>=0.40",
+    "llama-index-llms-anthropic>=0.3",
+    "pandas>=2",
+    "arize-phoenix>=5",
 ]
 
 [tool.uv]
@@ -36,6 +71,17 @@ dev-dependencies = [
     "pyyaml>=6.0.3",
     "testcontainers[postgres]>=4.0",
 ]
+
+# Реранкеру нужен torch только на CPU (в проде GPU нет). На Linux берём CPU-сборку
+# из индекса PyTorch — иначе uv тянет ~4 ГБ CUDA-колёс в Docker-образ. На macOS
+# остаётся обычное колесо с PyPI (там оно и так CPU/MPS).
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

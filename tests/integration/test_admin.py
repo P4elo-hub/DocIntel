@@ -47,6 +47,9 @@ async def test_stats_returns_200_with_valid_token(admin_client):
         "total_messages": 0,
         "active_users": 0,
         "feedback_ratio": 0.0,
+        "refusal_rate": 0.0,
+        "negative_feedback_rate": 0.0,
+        "knowledge_gaps": [],
     }
 
 

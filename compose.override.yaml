@@ -9,9 +9,17 @@ services:
       - ./bot:/app/bot:ro
       - ./feature-methodology-project:/app/feature-methodology-project:ro
       - ./var/chats:/app/var/chats
+      - ./data:/app/data
     environment:
       LOG_LEVEL: DEBUG
       RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-0}
+
+  # Монтируем исходники бота, чтобы правки применялись рестартом контейнера,
+  # без полной пересборки образа.
+  bot:
+    volumes:
+      - ./bot:/app/bot:ro
+      - ./app:/app/app:ro
 
   migrate:
     build:

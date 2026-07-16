@@ -11,10 +11,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.10 /uv /uvx /bin/
 
 WORKDIR /app
 
+# extra `retrieval` (реранкер + гибридный поиск) ставится в образ, т.к. включены
+# RAG_USE_RERANKER / RAG_USE_HYBRID. Тянет torch+sentence-transformers (~2 ГБ).
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --no-dev
+    uv sync --frozen --no-install-project --no-dev --extra retrieval
 
 COPY app/ ./app/
 COPY bot/ ./bot/
@@ -24,7 +26,7 @@ COPY feature-methodology-project/ ./feature-methodology-project/
 COPY pyproject.toml uv.lock ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --extra retrieval
 
 # ========== STAGE 2: RUNTIME ==========
 FROM python:3.13-slim-bookworm

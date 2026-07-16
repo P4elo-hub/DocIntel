@@ -8,14 +8,18 @@ from pydantic import BaseModel
 class StatsOut(BaseModel):
     """Агрегаты за окно времени, которые backend реально считает.
 
-    avg_latency_ms / moderation_block_rate в M4 не хранятся (нет таблицы
-    request_metrics — это задача M5+). Если они нужны — добавь таблицу
-    и метод в AdminRepository, и расширь схему.
+    M4-метрики (сообщения, активные пользователи, доля положительных оценок) +
+    RAG-дельта M5: доля отказов, доля отрицательных оценок и топ вопросов без
+    ответа (по таблице rag_queries).
     """
 
     total_messages: int
     active_users: int
     feedback_ratio: float = 0.0
+    # RAG-дельта M5: считаются по rag_queries и message_feedback.
+    refusal_rate: float = 0.0
+    negative_feedback_rate: float = 0.0
+    knowledge_gaps: list[str] = []
 
 
 class BroadcastIn(BaseModel):

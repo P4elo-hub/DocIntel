@@ -84,7 +84,7 @@ class BackendClient:
                 ptype = payload.get("type")
                 if ptype == "done":
                     return
-                if ptype in ("token", "message_saved", "error"):
+                if ptype in ("token", "message_saved", "error", "sources"):
                     yield payload
 
     async def clear_messages(

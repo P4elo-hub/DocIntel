@@ -62,7 +62,15 @@ async def main() -> None:
     )
     try:
         await asyncio.gather(
-            dp.start_polling(bot),
+            # drop_pending_updates: при старте отбрасываем всё, что Telegram
+            # накопил, пока бот был недоступен (рестарт/пересборка). Иначе бот
+            # проигрывает старую очередь — «печатает» устаревшие ответы, а новый
+            # /start ждёт в конце очереди.
+            dp.start_polling(
+                bot,
+                drop_pending_updates=True,
+                allowed_updates=dp.resolve_used_update_types(),
+            ),
             server.serve(),
             drain_alerts(bot, backend, settings.admin_chat_id),
         )

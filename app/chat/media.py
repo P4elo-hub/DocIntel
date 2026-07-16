@@ -27,6 +27,30 @@ VOICE_UNAVAILABLE_MESSAGE = (
     "Сейчас временно не могу обрабатывать голосовые сообщения."
 )
 
+_VOICE_PREFIX = "[пользователь сказал голосом]:"
+_DOC_PREFIXES = ("[документ PDF]:", "[документ DOCX]:")
+
+
+def extract_rag_query(user_content: str, media_refs: dict | None) -> str:
+    """Текст для RAG-поиска: caption/сообщение или транскрипт голоса."""
+    text = (user_content or "").strip()
+    if text:
+        return text
+    if not media_refs or not isinstance(media_refs, dict):
+        return ""
+    part = media_refs.get("part")
+    if not part or part.get("type") != "text":
+        return ""
+    part_text = (part.get("text") or "").strip()
+    if part_text.startswith(_VOICE_PREFIX):
+        body = part_text[len(_VOICE_PREFIX) :].lstrip("\n")
+        return body.strip()
+    for prefix in _DOC_PREFIXES:
+        if part_text.startswith(prefix):
+            body = part_text[len(prefix) :].lstrip("\n")
+            return body[:2000].strip()
+    return ""
+
 
 async def media_to_part(
     media: UploadFile, llm_client: AsyncOpenAI

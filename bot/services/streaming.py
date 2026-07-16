@@ -32,6 +32,23 @@ from bot.keyboards.inline import feedback_kb
 log = logging.getLogger(__name__)
 
 
+def _format_sources_footer(sources: list[dict]) -> str:
+    """Компактный блок «Источники» под ответом: [1] file.md, [2] file.md.
+
+    Цитаты [n] уже стоят в тексте ответа; футер расшифровывает номера в имена
+    файлов из базы знаний."""
+    if not sources:
+        return ""
+    lines = ["", "", "📚 Источники:"]
+    for s in sources:
+        sid = s.get("id")
+        name = s.get("file_name") or "unknown"
+        page = s.get("page")
+        suffix = f", стр. {page}" if page else ""
+        lines.append(f"[{sid}] {name}{suffix}")
+    return "\n".join(lines)
+
+
 def _to_tg_markdown(text: str) -> str:
     """GitHub-Markdown от LLM → Telegram MarkdownV2 с эскейпом спецсимволов.
 
@@ -64,6 +81,7 @@ async def stream_to_chat(
     draft_id = uuid.uuid4().int & 0xFFFFFFFF or 1  # ensure non-zero
     buffer = ""
     assistant_message_id: str | None = None
+    sources: list[dict] = []
     last_draft_at = 0.0
 
     # Первый кадр — пустой draft-плейсхолдер. Если метод недоступен (старая
@@ -110,12 +128,14 @@ async def stream_to_chat(
                 pass
         elif etype == "message_saved":
             assistant_message_id = event.get("message_id")
+        elif etype == "sources":
+            sources = event.get("sources", [])
 
     if buffer:
         reply_markup = (
             feedback_kb(assistant_message_id) if assistant_message_id else None
         )
-        await _send_final(message, buffer, reply_markup)
+        await _send_final(message, buffer + _format_sources_footer(sources), reply_markup)
     return buffer
 
 
@@ -151,6 +171,7 @@ async def _stream_via_edit_text(
     sent = await message.answer("…")
     buffer = ""
     assistant_message_id: str | None = None
+    sources: list[dict] = []
     last_edit = monotonic()
 
     async for event in events:
@@ -172,11 +193,14 @@ async def _stream_via_edit_text(
                     last_edit = monotonic()
         elif etype == "message_saved":
             assistant_message_id = event.get("message_id")
+        elif etype == "sources":
+            sources = event.get("sources", [])
 
     if buffer:
         reply_markup = (
             feedback_kb(assistant_message_id) if assistant_message_id else None
         )
+        buffer = buffer + _format_sources_footer(sources)
         md = _to_tg_markdown(buffer)
         try:
             await sent.edit_text(

@@ -62,6 +62,7 @@ class PostgresChatRepository:
             role=message.role,
             content=message.content,
             media_refs=message.media_refs,
+            sources=message.sources,
             tokens=message.tokens,
             prompt_id=message.prompt_id,
             created_at=message.created_at,

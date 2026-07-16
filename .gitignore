@@ -50,6 +50,12 @@ var/
 examples/answers/
 eval/runs/
 
+# Сгенерированные артефакты RAG-индексации (regenerable, дублируют текст базы)
+data/*_docstore.json
+
+# Персональная база знаний (локальная, не публикуется)
+data/my-kb/
+
 # Garak: локальные hitlog-копии (JSONL/HTML отчёты — в docs/security/reports/)
 *.hitlog.jsonl
 .garak/
