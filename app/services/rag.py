@@ -67,7 +67,10 @@ def build_sources(source_nodes: list[NodeWithScore]) -> list[dict]:
                 "id": i,
                 "file_name": meta.get("file_name") or meta.get("source") or "unknown",
                 "page": meta.get("page"),
-                "score": round(sn.score or 0.0, 3),
+                # float() обязателен: reranker (SentenceTransformerRerank) кладёт в
+                # score numpy float32, а он не сериализуется в JSON — падает запись
+                # sources в БД (TypeError) и футер «Источники» не доходит.
+                "score": round(float(sn.score or 0.0), 3),
                 "snippet": sn.get_content()[:200].strip(),
             }
         )
@@ -216,16 +219,9 @@ class RAGService:
         nodes = await self._retrieve_checked(question)
         return await self._synthesize(question, nodes)
 
-    async def retrieve_context(self, question: str) -> dict:
-        """Для встроенного RAG в чат (вариант C): нумерованный контекст + sources
-        БЕЗ отдельного синтеза LLM — генерацию делает сам чат-конвейер.
-
-        Контракт: {context_str, sources, top_score, confident}. Если ничего
-        релевантного не найдено (top_score < порога) — confident=False и пустой
-        context_str: чат ответит своими знаниями, без цитат.
-        """
-        nodes = await self._retrieve_checked(question)
-        top_score = max((sn.score or 0.0 for sn in nodes), default=0.0)
+    def _pack_retrieval_result(self, nodes: list[NodeWithScore]) -> dict:
+        # float(): reranker отдаёт numpy float32 — иначе он утечёт в JSON-ответ.
+        top_score = float(max((sn.score or 0.0 for sn in nodes), default=0.0))
         if not nodes or top_score < self._settings.rag_score_threshold:
             return {
                 "context_str": "",
@@ -239,6 +235,89 @@ class RAGService:
             "top_score": round(top_score, 3),
             "confident": True,
         }
+
+    @staticmethod
+    def _merge_retrieved_nodes(
+        batches: list[list[NodeWithScore]],
+        *,
+        top_n: int,
+        reserved_first: int = 0,
+    ) -> list[NodeWithScore]:
+        """Объединяет чанки нескольких запросов: дедуп по node_id, сортировка по score.
+
+        reserved_first гарантирует минимум N слотов top-результатам ПЕРВОГО
+        (приоритетного) запроса — свежей реплике пользователя. Иначе шумная
+        condensed-переформулировка (напр. с ошибочным «ОГЭ») с высокими score
+        полностью вытесняет правильные чанки от исходной правки.
+        """
+        if not batches:
+            return []
+        seen: set[str] = set()
+        reserved: list[NodeWithScore] = []
+        for sn in batches[0]:
+            if len(reserved) >= reserved_first:
+                break
+            node_id = sn.node.node_id
+            if node_id in seen:
+                continue
+            seen.add(node_id)
+            reserved.append(sn)
+        rest: list[NodeWithScore] = []
+        for nodes in batches:
+            for sn in nodes:
+                node_id = sn.node.node_id
+                if node_id in seen:
+                    continue
+                seen.add(node_id)
+                rest.append(sn)
+        rest.sort(key=lambda item: item.score or 0.0, reverse=True)
+        merged = reserved + rest
+        return merged[:top_n]
+
+    async def retrieve_context(self, question: str) -> dict:
+        """Для встроенного RAG в чат (вариант C): нумерованный контекст + sources
+        БЕЗ отдельного синтеза LLM — генерацию делает сам чат-конвейер.
+
+        Контракт: {context_str, sources, top_score, confident}. Если ничего
+        релевантного не найдено (top_score < порога) — confident=False и пустой
+        context_str: чат ответит своими знаниями, без цитат.
+        """
+        nodes = await self._retrieve_checked(question)
+        return self._pack_retrieval_result(nodes)
+
+    async def retrieve_context_multi(
+        self, questions: list[str], *, prioritize_first: bool = False
+    ) -> dict:
+        """Retrieval по нескольким формулировкам; объединяет уникальные чанки.
+
+        Полезно для follow-up: основной запрос + контекст диалога + термины
+        нужного слоя интеграции могут подтянуть разные фрагменты одного документа.
+
+        prioritize_first — резервирует часть слотов под top-результаты первого
+        запроса (свежей реплики). Нужен при явной правке («нет, не X, а Y»),
+        когда condensed-переформулировка может унести поиск не в ту сторону.
+        """
+        unique: list[str] = []
+        seen_q: set[str] = set()
+        for question in questions:
+            q = question.strip()
+            if q and q not in seen_q:
+                seen_q.add(q)
+                unique.append(q)
+        if not unique:
+            return {"context_str": "", "sources": [], "top_score": 0.0, "confident": False}
+        if len(unique) == 1:
+            return await self.retrieve_context(unique[0])
+
+        top_n = self._settings.rag_rerank_top_n
+        # Половину слотов (но не весь top_n) отдаём свежей реплике: она остаётся
+        # представленной в контексте, но не забивает выдачу целиком.
+        reserved_first = max(1, top_n // 2) if prioritize_first else 0
+        batches = [await self._retrieve_checked(q) for q in unique]
+        merged = self._merge_retrieved_nodes(
+            batches, top_n=top_n, reserved_first=reserved_first
+        )
+        return self._pack_retrieval_result(merged)
 
     async def evaluate_inputs(self, question: str) -> dict:
         """answer() + полные retrieved_contexts (тексты чанков) — вход для RAGAS.
@@ -257,7 +336,7 @@ class RAGService:
         return await self._retrieve(question)
 
     async def _synthesize(self, question: str, nodes: list[NodeWithScore]) -> dict:
-        top_score = max((sn.score or 0.0 for sn in nodes), default=0.0)
+        top_score = float(max((sn.score or 0.0 for sn in nodes), default=0.0))
         if not nodes or top_score < self._settings.rag_score_threshold:
             return {
                 "answer": REFUSAL_TEXT,

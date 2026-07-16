@@ -24,6 +24,8 @@ services:
       - chat_data:/app/var/chats
       # RAG-корпус с хоста (не в образе — см. .dockerignore); rw для upload/reindex.
       - ./data:/app/data
+      # Кэш HuggingFace: веса reranker-модели (~2.2 ГБ) переживают пересборку образа.
+      - hf_cache:/home/appuser/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
@@ -158,3 +160,4 @@ volumes:
   postgres_data:
   chat_data:
   qdrant_storage:
+  hf_cache:

@@ -58,6 +58,24 @@ async def test_audio_to_part_calls_whisper():
     assert "пользователь сказал голосом" in part["text"]
     assert "Привет, как дела" in part["text"]
     llm.audio.transcriptions.create.assert_awaited_once()
+    # Доменная подсказка и язык должны уходить в Whisper для точности на жаргоне.
+    kwargs = llm.audio.transcriptions.create.await_args.kwargs
+    assert kwargs["model"] == "whisper-1"
+    assert kwargs.get("prompt")
+    assert "History Ops" in kwargs["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_whisper_transcribe_omits_empty_prompt_and_language():
+    from app.chat.media import whisper_transcribe
+
+    llm = MagicMock()
+    llm.audio.transcriptions.create = AsyncMock(return_value=MagicMock(text="ok"))
+    out = await whisper_transcribe(b"x", "a.ogg", llm, prompt="  ", language="")
+    assert out == "ok"
+    kwargs = llm.audio.transcriptions.create.await_args.kwargs
+    assert "prompt" not in kwargs
+    assert "language" not in kwargs
 
 
 @pytest.mark.asyncio

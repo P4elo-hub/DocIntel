@@ -21,6 +21,12 @@ class LLMSettings(BaseSettings):
     request_timeout: float = 30.0
     max_retries: int = 3
     enable_fallback: bool = True
+    # Доменная подсказка для Whisper (ASR): список терминов, которые модель иначе
+    # слышит как частотные слова («OG»→«ОГЭ», «History Ops»→«Хистриопс»). Пусто —
+    # используется встроенный список по умолчанию (app/chat/media.py).
+    whisper_prompt: str = ""
+    # Язык распознавания (ISO-639-1). Фиксируем ru — снижает случайные переключения.
+    whisper_language: str = "ru"
 
     @field_validator("openai_api_key")
     @classmethod
@@ -149,7 +155,10 @@ class Settings(BaseSettings):
     # Если top-1 score ниже порога — ответа в корпусе нет, отдаём честный fallback.
     rag_score_threshold: float = 0.3
     # Корпоративный RAG: достаём широко, оставляем top_n лучших.
-    rag_retrieve_top_k: int = 25
+    # top_k держим умеренным: cross-encoder reranker переоценивает КАЖДОГО
+    # кандидата на CPU (~сотни мс/док), поэтому 25 давало ~39с на запрос. 10 —
+    # компромисс скорости и полноты (reranker всё равно поднимет лучшие вверх).
+    rag_retrieve_top_k: int = 10
     rag_rerank_top_n: int = 10
     # Реранкер и гибридный поиск — опциональные тяжёлые зависимости, в репо не
     # держим хард-депендой. Включаются флагом, тогда нужны extras:

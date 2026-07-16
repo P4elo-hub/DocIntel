@@ -29,9 +29,17 @@ class _FakeRAG:
     def __init__(self, result: dict) -> None:
         self._result = result
         self.calls: list[str] = []
+        self.multi_calls: list[list[str]] = []
 
     async def retrieve_context(self, question: str) -> dict:
         self.calls.append(question)
+        return self._result
+
+    async def retrieve_context_multi(
+        self, questions: list[str], *, prioritize_first: bool = False
+    ) -> dict:
+        self.multi_calls.append(questions)
+        self.last_prioritize_first = prioritize_first
         return self._result
 
 
@@ -165,3 +173,34 @@ async def test_rag_uses_voice_transcript_when_content_empty(json_repo):
     assert rag.calls == [
         "сколькими сервисами есть интеграции у истории операций?",
     ]
+
+
+async def test_rag_follow_up_uses_multi_query(json_repo):
+    rag = _FakeRAG(_CONFIDENT)
+    llm = _llm_streaming("SEND_DETAILS [1].")
+    service = _service(json_repo, llm, rag)
+    chat = await json_repo.create_chat(owner_external_id="u1", interface="telegram")
+
+    await json_repo.append_message(
+        chat.id,
+        ChatMessage(chat_id=chat.id, role="user", content="формат вывода HO Composite"),
+    )
+    await json_repo.append_message(
+        chat.id,
+        ChatMessage(
+            chat_id=chat.id,
+            role="assistant",
+            content="screenData sections для funds_output",
+        ),
+    )
+
+    async for _ in service.send_message(
+        chat.id,
+        "Нет, это не то — нужен формат HistoryOps в Composite, не на фронт",
+    ):
+        pass
+
+    assert rag.calls == []
+    assert len(rag.multi_calls) == 1
+    assert len(rag.multi_calls[0]) >= 2
+    assert any("GET_DETAILS" in q for q in rag.multi_calls[0])

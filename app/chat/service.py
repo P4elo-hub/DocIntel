@@ -8,6 +8,13 @@ from fastapi import UploadFile
 from app.chat.context import build_sliding_context
 from app.chat.domain import Chat, ChatMessage
 from app.chat.media import VOICE_UNAVAILABLE_MESSAGE, extract_rag_query, media_to_part
+from app.chat.rag_query import (
+    build_condense_messages,
+    build_rag_queries,
+    is_follow_up_clarification,
+    needs_context_expansion,
+    sanitize_condensed,
+)
 from app.core.exceptions import VoiceUnavailableError
 from app.chat.prompt_selection import choose_by_split
 from app.chat.repository import ChatRepository, SystemPromptRepository
@@ -16,6 +23,10 @@ from app.moderation.domain import ModerationResult
 from app.moderation.service import ModerationService
 
 logger = structlog.get_logger("chat-service")
+
+# Максимум запросов для follow-up мульти-поиска. Каждый запрос — отдельный ретрив
+# + reranker на CPU, поэтому веер ограничен, иначе latency растёт кратно.
+_MAX_FOLLOWUP_RAG_QUERIES = 3
 
 
 def _filter_used_sources(answer: str, sources: list) -> list:
@@ -109,13 +120,28 @@ class ChatService:
             return None, None
         return chosen.id, chosen.body
 
-    async def _retrieve_rag(self, question: str) -> dict:
+    async def _retrieve_rag(
+        self, questions: str | list[str], *, prioritize_first: bool = False
+    ) -> dict:
         """Вариант C: ищет контекст в базе знаний. Сбой/незрелый индекс —
-        не роняет чат: возвращаем пустой результат, отвечаем без цитат."""
-        if not self.rag_enabled or self.rag_service is None or not question.strip():
+        не роняет чат: возвращаем пустой результат, отвечаем без цитат.
+
+        prioritize_first резервирует слоты под первый запрос (свежую реплику):
+        нужно при явной правке, чтобы condensed-переформулировка не увела поиск.
+        """
+        if isinstance(questions, str):
+            query_list = [questions] if questions.strip() else []
+        else:
+            query_list = [q.strip() for q in questions if q.strip()]
+        if not self.rag_enabled or self.rag_service is None or not query_list:
             return {"context_str": "", "sources": []}
         try:
-            result = await self.rag_service.retrieve_context(question)
+            if len(query_list) == 1:
+                result = await self.rag_service.retrieve_context(query_list[0])
+            else:
+                result = await self.rag_service.retrieve_context_multi(
+                    query_list, prioritize_first=prioritize_first
+                )
         except Exception as exc:
             logger.warning("rag_retrieve_failed", error=str(exc))
             return {"context_str": "", "sources": []}
@@ -125,6 +151,32 @@ class ChatService:
             "context_str": result.get("context_str", ""),
             "sources": result.get("sources", []),
         }
+
+    async def _condense_query(self, current: str, history: list) -> str:
+        """Свернуть follow-up в самостоятельный поисковый запрос через дешёвую LLM.
+
+        «приведи пример» + история про комиссии БПХ → «пример JSON ответа с
+        комиссиями от БПХ». При сбое/пустом ответе возвращаем исходную реплику,
+        чтобы retrieval не остался без запроса.
+        """
+        messages = build_condense_messages(current, history)
+        if messages is None:
+            return current
+        try:
+            resp = await self.llm.chat.completions.create(
+                model=self.default_model,
+                messages=messages,
+                temperature=0,
+                max_tokens=120,
+            )
+            raw = resp.choices[0].message.content if resp.choices else ""
+        except Exception as exc:
+            logger.warning("rag_condense_failed", error=str(exc))
+            return current
+        condensed = sanitize_condensed(raw or "", fallback=current)
+        if condensed != current:
+            logger.info("rag_query_condensed", original=current[:120], condensed=condensed[:120])
+        return condensed
 
     @staticmethod
     def _rag_context_message(context_str: str) -> dict:
@@ -143,13 +195,18 @@ class ChatService:
                 "только если об этом прямо спрашивают. При противоречии между "
                 "источниками предпочитай более новый (TO BE, свежая версия релиза, "
                 "не помеченный как устаревший).\n"
-                "4. Если ответа в источниках нет или они не относятся к вопросу — "
-                "честно напиши: «В базе знаний я не нашёл ответа на этот вопрос», "
-                "и не придумывай цитат.\n"
-                "5. Термины и аббревиатуры (например, DCA, БПХ, BC) понимай в "
+                "4. Собирай ответ из всех релевантных источников, даже если каждый "
+                "фрагмент неполный. Отказывайся («В базе знаний я не нашёл ответа») "
+                "только если ни один источник не содержит информации по сути вопроса.\n"
+                "5. Различай слои интеграции: (а) BPH/BC → HO, (б) HO → Composite "
+                "(gRPC GET_DETAILS / SEND_DETAILS, proto-поля операции), (в) Composite "
+                "→ МП (screenData, sections). На уточнения («это не то», «нужен формат "
+                "HO→Composite») отвечай по правильному слою из источников.\n"
+                "6. Термины и аббревиатуры (например, DCA, БПХ, BC) понимай в "
                 "контексте продукта «История операций» по этим источникам. Если "
                 "твои предыдущие ответы в этом диалоге противоречат источникам — "
-                "источники приоритетны, игнорируй прежние ответы и не повторяй их.\n\n"
+                "источники приоритетны: исправь ошибку и ответь по источникам, "
+                "не повторяй неверный формат.\n\n"
                 "---------------------\n"
                 f"{context_str}\n"
                 "---------------------"
@@ -198,6 +255,8 @@ class ChatService:
         )
         await self.repository.append_message(chat_id, user_message)
 
+        history = await self.repository.list_messages(chat_id, limit=self.context_window)
+
         messages = await build_sliding_context(
             self.repository,
             chat,
@@ -208,7 +267,37 @@ class ChatService:
 
         # Вариант C: подмешиваем найденные в базе знаний чанки как system-контекст.
         # fit_to_budget сохраняет system-сообщения, поэтому контекст не обрежется.
-        rag = await self._retrieve_rag(extract_rag_query(user_content, media_refs))
+        current_query = extract_rag_query(user_content, media_refs)
+        prior_history = history[:-1]
+        # Follow-up («приведи пример», «это не то», короткая реплика) теряет тему при
+        # поиске только по себе — тогда сворачиваем его в самостоятельный запрос и
+        # добавляем контекстные запросы. Самостоятельный развёрнутый вопрос ищем одним
+        # запросом: без лишнего LLM-condense и мульти-поиска (меньше шума и latency).
+        prioritize_raw = False
+        if prior_history and needs_context_expansion(current_query):
+            condensed_query = await self._condense_query(current_query, prior_history)
+            # Сырую реплику ставим ПЕРВОЙ: при явной правке («нет, не X, а Y»)
+            # именно она несёт новый термин, а condensed может утащить старый
+            # (напр. «ОГЭ» из отравленной истории). prioritize_raw резервирует
+            # ей слоты в выдаче, чтобы шумная свёртка её не вытеснила.
+            candidates = [
+                current_query,
+                condensed_query,
+                *build_rag_queries(current_query, history=prior_history),
+            ]
+            rag_queries: list[str] = []
+            for q in candidates:
+                if q and q not in rag_queries:
+                    rag_queries.append(q)
+            # Каждый запрос = отдельный ретрив + reranker на CPU (дорого). Ограничиваем
+            # веер до 3: сырая реплика + condensed + один контекстный/слоевой запрос.
+            rag_queries = rag_queries[:_MAX_FOLLOWUP_RAG_QUERIES]
+            prioritize_raw = is_follow_up_clarification(current_query)
+        else:
+            rag_queries = [current_query] if current_query else []
+        rag = await self._retrieve_rag(
+            rag_queries or current_query, prioritize_first=prioritize_raw
+        )
         rag_sources = rag["sources"]
         rag_msg = None
         if rag["context_str"]:

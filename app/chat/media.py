@@ -30,6 +30,20 @@ VOICE_UNAVAILABLE_MESSAGE = (
 _VOICE_PREFIX = "[пользователь сказал голосом]:"
 _DOC_PREFIXES = ("[документ PDF]:", "[документ DOCX]:")
 
+# Доменная подсказка для Whisper: перечисляем термины/аббревиатуры «Истории
+# операций», которые ASR иначе слышит как частотные слова (OG→ОГЭ, History
+# Ops→Хистриопс). Whisper использует это как контекст и точнее распознаёт жаргон.
+# Лимит подсказки ~224 токена, поэтому держим короткий список ключевых терминов.
+# Переопределяется через LLM_WHISPER_PROMPT (см. app/core/config.py).
+WHISPER_DOMAIN_PROMPT = (
+    "История операций (History Ops, HistoryOps, HO). "
+    "Order Gateway (OG, order-gateway). Composite (Композит), ScreenApi. "
+    "БПХ (BPH), БК (BC), ДКА (DCA), ОШ, СберИнвестор, СИ2. "
+    "gRPC, Thrift, proto, GET_TRADES, GET_DEALS, GET_DETAILS, SEND_DETAILS, "
+    "GET_OPERATIONS_WITH_DETAILS, GET_OPERATIONS_FEED, GetTradeOrders. "
+    "SIHIST, agreement-gateway, dictionary-gateway, funds_output, TAX_RETAIN."
+)
+
 
 def extract_rag_query(user_content: str, media_refs: dict | None) -> str:
     """Текст для RAG-поиска: caption/сообщение или транскрипт голоса."""
@@ -79,8 +93,10 @@ async def media_to_part(
         }
 
     if mime.startswith("audio/") or mime == "application/ogg":
+        prompt, language = _whisper_hints()
         transcript = await whisper_transcribe(
             data, media.filename or "audio.ogg", llm_client,
+            prompt=prompt, language=language,
         )
         return {
             "type": "text",
@@ -102,16 +118,42 @@ async def media_to_part(
     raise ValueError(f"Unsupported media type: {mime}")
 
 
+def _whisper_hints() -> tuple[str, str | None]:
+    """Подсказка и язык для Whisper из настроек (с фолбэком на встроенный список)."""
+    try:
+        from app.core.config import get_settings
+
+        llm = get_settings().llm
+        prompt = (llm.whisper_prompt or "").strip() or WHISPER_DOMAIN_PROMPT
+        language = (llm.whisper_language or "").strip() or None
+    except Exception:
+        # Настройки недоступны (например, в изолированном тесте) — не роняем голос.
+        prompt, language = WHISPER_DOMAIN_PROMPT, None
+    return prompt, language
+
+
 async def whisper_transcribe(
-    audio_bytes: bytes, filename: str, llm_client: AsyncOpenAI,
+    audio_bytes: bytes,
+    filename: str,
+    llm_client: AsyncOpenAI,
+    *,
+    prompt: str | None = None,
+    language: str | None = None,
 ) -> str:
-    """Whisper-1 принимает ogg/m4a/mp3/wav/flac/webm без конвертации."""
+    """Whisper-1 принимает ogg/m4a/mp3/wav/flac/webm без конвертации.
+
+    prompt — доменная подсказка (термины/аббревиатуры), повышает точность ASR на
+    жаргоне. language — код ISO-639-1 (напр. "ru"). Пустые значения не передаём.
+    """
     f = BytesIO(audio_bytes)
     f.name = filename  # OpenAI SDK ориентируется на расширение из .name
+    kwargs: dict = {"model": "whisper-1", "file": f}
+    if prompt and prompt.strip():
+        kwargs["prompt"] = prompt.strip()
+    if language and language.strip():
+        kwargs["language"] = language.strip()
     try:
-        result = await llm_client.audio.transcriptions.create(
-            model="whisper-1", file=f,
-        )
+        result = await llm_client.audio.transcriptions.create(**kwargs)
     except VoiceUnavailableError:
         raise
     except Exception as exc:
