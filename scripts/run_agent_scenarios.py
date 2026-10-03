@@ -195,7 +195,7 @@ def _anchors_in_text(anchors: list[str], text: str) -> list[str]:
     return hit
 
 
-def _grounding_overlap(answer: str, rag_context: str) -> float:
+def _rag_key_overlap(answer: str, rag_context: str) -> float:
     """Доля JSON-ключей / idents ответа, встречающихся в rag_context."""
     body = re.sub(r"(?im)^#{1,3}\s*Источники\b[\s\S]*$", "", answer or "")
     keys = _json_keys(body)
@@ -327,7 +327,7 @@ def check_turn(
                 gap_reason = "Qdrant miss for query anchors"
 
         if _looks_like_json_example(answer):
-            overlap = _grounding_overlap(answer, rag_ctx)
+            overlap = _rag_key_overlap(answer, rag_ctx)
             # Порог: хотя бы 25% ключей/idents ответа встречаются в Qdrant-контексте.
             ok = overlap >= 0.25
             checks.append(
@@ -352,7 +352,7 @@ def check_turn(
 
     if category == "answer_history" and intent == "answer" and rag_ctx:
         # Follow-up: ответ должен быть ближе к текущему rag_context, чем «пустой».
-        overlap = _grounding_overlap(answer, rag_ctx)
+        overlap = _rag_key_overlap(answer, rag_ctx)
         checks.append(
             CheckResult(
                 "followup_grounded",
