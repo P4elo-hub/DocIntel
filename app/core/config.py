@@ -116,6 +116,13 @@ class Settings(BaseSettings):
     # релевантные чанки в базе знаний и подмешивает их в контекст с цитатами.
     # Выключить (false) — обычный чат без обращения к базе знаний.
     chat_rag_enabled: bool = True
+    # LangGraph DocIntel: Telegram/web чат идёт через двух агентов
+    # (search_agent → write_agent), а не через «голые» tools / простой RAG.
+    # false — прежний путь (RAG + LLM stream).
+    chat_agent_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("chat_agent_enabled", "CHAT_AGENT_ENABLED"),
+    )
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/llm_service"
 
     # Telegram bot / production

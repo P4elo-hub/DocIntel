@@ -32,7 +32,10 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Напишите боту в Telegram: `/start` → текстовое сообщение. Подробная инструкция по Docker, логам, Redis, Postgres и Adminer — **[docs/docker.md](docs/docker.md)**.
+Напишите боту в Telegram: `/start` → текстовое сообщение.
+
+- **Шпаргалка портов и операций** (ссылки localhost, Qdrant reindex, логи) — **[docs/services.md](docs/services.md)**
+- Подробный Docker-гайд — **[docs/docker.md](docs/docker.md)**
 
 ### Команды бота
 
@@ -80,6 +83,7 @@ bot/                           # Telegram: long polling + /notify :9000
 
 alembic/                       # миграции Postgres (чаты + production-таблицы)
 data/                          # корпуса RAG: rag-block-03 (sample), my-kb (личная, gitignore)
+docs/services.md               # Шпаргалка: порты, ссылки, reindex, логи
 docs/docker.md                 # Docker, бот, Qdrant, логи, Redis, Adminer
 docs/rag.md                    # RAG: LlamaIndex, Qdrant, чанкинг, метаданные, reindex
 ```

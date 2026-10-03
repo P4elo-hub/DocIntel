@@ -1,0 +1,6 @@
+flowchart TD
+    START([START]) --> call_model[call_model]
+    call_model -->|tool_calls| execute_tool[execute_tool]
+    call_model -->|done or max_iter| force_finish[force_finish]
+    execute_tool --> call_model
+    force_finish --> FINISH([END])

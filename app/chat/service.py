@@ -58,6 +58,7 @@ class ChatService:
         prompt_repo: SystemPromptRepository | None = None,
         rag_service=None,
         rag_enabled: bool = False,
+        agent_enabled: bool = False,
     ) -> None:
         self.repository = repository
         self.llm = llm_client
@@ -70,6 +71,8 @@ class ChatService:
         self.prompt_repo = prompt_repo
         self.rag_service = rag_service
         self.rag_enabled = rag_enabled
+        # True → Telegram/web идут через LangGraph (search_agent / write_agent).
+        self.agent_enabled = agent_enabled
 
     async def create_chat(
         self,
@@ -213,6 +216,69 @@ class ChatService:
             ),
         }
 
+    async def _send_via_agents(
+        self,
+        *,
+        chat_id: UUID,
+        query: str,
+        intent: str,
+        prompt_id,
+    ) -> AsyncIterator[dict]:
+        """Ответ через LangGraph: search_agent и при необходимости write_agent."""
+        from app.services.agent_graph import run_docintel_pipeline
+
+        logger.info(
+            "chat_agent_pipeline_start",
+            chat_id=str(chat_id),
+            intent=intent,
+            query=query[:160],
+        )
+        try:
+            result = await run_docintel_pipeline(
+                query,
+                thread_id=f"chat-{chat_id}",
+            )
+        except Exception as exc:
+            logger.exception("chat_agent_pipeline_failed", chat_id=str(chat_id))
+            yield {
+                "type": "error",
+                "code": "agent_pipeline_failed",
+                "message": f"Агенты DocIntel не ответили: {exc}",
+            }
+            return
+
+        assistant_text = (result.get("answer") or "").strip()
+        agents = result.get("agents_called") or []
+        logger.info(
+            "chat_agent_pipeline_done",
+            chat_id=str(chat_id),
+            intent=result.get("intent"),
+            agents=agents,
+            chars=len(assistant_text),
+        )
+        if not assistant_text:
+            yield {
+                "type": "error",
+                "code": "agent_empty_answer",
+                "message": "Агенты не вернули текст ответа.",
+            }
+            return
+
+        # SSE/бот ждут token-стрим — отдаём ответ чанками.
+        chunk_size = 48
+        for i in range(0, len(assistant_text), chunk_size):
+            yield {"type": "token", "delta": assistant_text[i : i + chunk_size]}
+
+        assistant_message = ChatMessage(
+            chat_id=chat_id,
+            role="assistant",
+            content=assistant_text,
+            tokens=count_tokens([{"role": "assistant", "content": assistant_text}]),
+            prompt_id=prompt_id,
+        )
+        saved = await self.repository.append_message(chat_id, assistant_message)
+        yield {"type": "message_saved", "message_id": str(saved.id)}
+
     async def send_message(
         self,
         chat_id: UUID,
@@ -257,6 +323,23 @@ class ChatService:
 
         history = await self.repository.list_messages(chat_id, limit=self.context_window)
 
+        # LangGraph DocIntel: вопрос → search_agent; «напиши документацию» →
+        # search_agent → write_agent. Telegram бьёт в этот же /chats путь.
+        current_query = extract_rag_query(user_content, media_refs)
+        if self.agent_enabled and current_query.strip():
+            from app.services.agent_graph import detect_intent
+
+            intent = detect_intent(current_query)
+            if intent in ("search", "write"):
+                async for event in self._send_via_agents(
+                    chat_id=chat_id,
+                    query=current_query,
+                    intent=intent,
+                    prompt_id=prompt_id,
+                ):
+                    yield event
+                return
+
         messages = await build_sliding_context(
             self.repository,
             chat,
@@ -267,7 +350,6 @@ class ChatService:
 
         # Вариант C: подмешиваем найденные в базе знаний чанки как system-контекст.
         # fit_to_budget сохраняет system-сообщения, поэтому контекст не обрежется.
-        current_query = extract_rag_query(user_content, media_refs)
         prior_history = history[:-1]
         # Follow-up («приведи пример», «это не то», короткая реплика) теряет тему при
         # поиске только по себе — тогда сворачиваем его в самостоятельный запрос и

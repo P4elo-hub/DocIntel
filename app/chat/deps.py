@@ -9,7 +9,7 @@ from app.chat.repositories.pg_repo import PostgresChatRepository, PostgresSystem
 from app.chat.repository import ChatRepository
 from app.chat.service import ChatService
 from app.core.config import Settings, get_settings
-from app.deps.providers import get_llm, get_rag_service, get_session_factory, SessionFactoryDep
+from app.deps.providers import get_llm, get_rag_service, SessionFactoryDep
 from app.moderation.service import ModerationService
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -76,6 +76,7 @@ def get_chat_service(
         prompt_repo=prompt_repo,
         rag_service=rag_service,
         rag_enabled=settings.chat_rag_enabled,
+        agent_enabled=settings.chat_agent_enabled,
     )
 
 

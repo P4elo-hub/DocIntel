@@ -1,0 +1,5 @@
+flowchart TD
+    START([START]) --> model[model]
+    model -->|tool_calls| tools[tools]
+    model -->|final answer| FINISH([END])
+    tools --> model

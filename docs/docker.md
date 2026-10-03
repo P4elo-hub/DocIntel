@@ -58,7 +58,8 @@ docker compose up --build
 | **Postgres** | `llm-postgres` | `localhost:5432` | История чатов, feedback, rate-limit, alerts |
 | **Adminer** | `llm-adminer` | http://localhost:8080 | Веб-UI для Postgres |
 | **Redis** | `llm-redis` | внутри сети `redis:6379` | Кеш `/chat`, HTTP rate limit (Б3.8) |
-| **Qdrant** | `llm-qdrant` | http://localhost:6333 (REST), `6334` (gRPC) | Векторное хранилище RAG: эмбеддинги + метаданные |
+| **Qdrant Dashboard** | `llm-qdrant` | http://localhost:6333/dashboard | Веб-UI: коллекции, точки, поиск |
+| **Qdrant REST** | `llm-qdrant` | http://localhost:6333 (JSON API), `6334` (gRPC) | Корневой `/` отдаёт JSON версии — это не UI |
 | **Phoenix** | `llm-phoenix` | http://localhost:6006 | Трейсы LLM (OpenTelemetry) |
 | **migrate** | `llm-migrate` | — | `alembic upgrade head`, завершается и выходит |
 
@@ -212,12 +213,14 @@ Qdrant `healthy` (`depends_on`). Данные лежат в volume `qdrant_stora
 | Параметр | Значение |
 |----------|----------|
 | Образ | `qdrant/qdrant:v1.14.0` |
-| REST API / Dashboard | http://localhost:6333 (`/dashboard`) |
+| **Dashboard (UI)** | **http://localhost:6333/dashboard** |
+| REST API (JSON) | http://localhost:6333 — корень отвечает `{"title":"qdrant..."}`, это нормально |
 | gRPC | `localhost:6334` |
 | Volume | `qdrant_storage:/qdrant/storage` |
 | В сети для `app` | `QDRANT_URL=http://qdrant:6333` |
 
-**Веб-дашборд:** http://localhost:6333/dashboard — коллекции, точки, поиск.
+**Открывать UI только так:** [http://localhost:6333/dashboard](http://localhost:6333/dashboard)  
+(не `http://localhost:6333` — там просто JSON API, не интерфейс).
 
 ```bash
 # Список коллекций

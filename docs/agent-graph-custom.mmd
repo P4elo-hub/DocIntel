@@ -1,0 +1,7 @@
+flowchart TD
+    START([START]) --> intent_router[intent_router]
+    intent_router -->|привет| FINISH([END])
+    intent_router -->|вопрос или напиши фичу| search_agent[search_agent<br/>tool: search_kb]
+    search_agent -->|просто вопрос| FINISH
+    search_agent -->|сделай документацию| write_agent[write_agent<br/>tool: write_feature_doc]
+    write_agent --> FINISH
