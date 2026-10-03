@@ -75,7 +75,7 @@ class ChatService:
         self.prompt_repo = prompt_repo
         self.rag_service = rag_service
         self.rag_enabled = rag_enabled
-        # True → Telegram/web идут через LangGraph (search_agent / write_agent).
+        # True → Telegram/web идут через LangGraph (Qdrant → answer/write).
         self.agent_enabled = agent_enabled
         self.cache = cache
         self.cache_ttl_seconds = cache_ttl_seconds
@@ -250,6 +250,7 @@ class ChatService:
         assistant_text = ""
         agents: list = []
         intent = None
+        rag_sources: list = []
 
         if self.cache is not None and not prior:
             try:
@@ -263,7 +264,13 @@ class ChatService:
                     assistant_text = (payload.get("answer") or "").strip()
                     agents = payload.get("agents") or ["cache"]
                     intent = payload.get("intent")
-                    cached_hit = bool(assistant_text)
+                    rag_sources = list(payload.get("sources") or [])
+                    # Не отдаём из кэша ответ «RAG ещё не готов» — иначе вечный miss.
+                    if "Qdrant) ещё не готова" in assistant_text:
+                        cached_hit = False
+                        assistant_text = ""
+                    else:
+                        cached_hit = bool(assistant_text)
                 except (TypeError, ValueError, json.JSONDecodeError) as exc:
                     logger.warning("agent_cache_corrupt", error=str(exc))
                     cached_hit = False
@@ -290,6 +297,7 @@ class ChatService:
                     chat_history=chat_history,
                     original_user_message=query,
                     thread_id=f"chat-{chat_id}",
+                    rag_service=self.rag_service,
                 )
             except Exception as exc:
                 logger.exception("chat_agent_pipeline_failed", chat_id=str(chat_id))
@@ -303,6 +311,7 @@ class ChatService:
             assistant_text = (result.get("answer") or "").strip()
             agents = result.get("agents_called") or []
             intent = result.get("intent")
+            rag_sources = list(result.get("sources") or [])
             use_history = bool(result.get("use_history"))
             effective = (result.get("user_request") or query).strip()
             logger.info(
@@ -311,11 +320,22 @@ class ChatService:
                 intent=intent,
                 use_history=use_history,
                 agents=agents,
+                sources=len(rag_sources),
                 chars=len(assistant_text),
                 cached=False,
             )
-            # Кэшируем только самостоятельные (fresh) ответы.
-            if assistant_text and self.cache is not None and not use_history:
+            # Кэшируем только самостоятельные (fresh) успешные ответы.
+            # Не кэшируем «RAG не готов» и пустой retrieve без источников.
+            cacheable = (
+                bool(assistant_text)
+                and self.cache is not None
+                and not use_history
+                and "Qdrant) ещё не готова" not in assistant_text
+                and not (
+                    intent in {"answer", "write", "search"} and not rag_sources
+                )
+            )
+            if cacheable:
                 try:
                     await self.cache.setex(
                         agent_query_cache_key(effective),
@@ -325,6 +345,7 @@ class ChatService:
                                 "answer": assistant_text,
                                 "intent": intent,
                                 "agents": agents,
+                                "sources": rag_sources,
                             },
                             ensure_ascii=False,
                         ),
@@ -345,15 +366,22 @@ class ChatService:
         for i in range(0, len(assistant_text), chunk_size):
             yield {"type": "token", "delta": assistant_text[i : i + chunk_size]}
 
+        # reject/chat — без источников; search/answer/write — список из Qdrant.
+        emit_sources = (
+            intent not in {"reject", "chat"} and bool(rag_sources)
+        )
         assistant_message = ChatMessage(
             chat_id=chat_id,
             role="assistant",
             content=assistant_text,
+            sources=rag_sources if emit_sources else None,
             tokens=count_tokens([{"role": "assistant", "content": assistant_text}]),
             prompt_id=prompt_id,
         )
         saved = await self.repository.append_message(chat_id, assistant_message)
         yield {"type": "message_saved", "message_id": str(saved.id)}
+        if emit_sources:
+            yield {"type": "sources", "sources": rag_sources}
 
     async def send_message(
         self,
@@ -388,10 +416,15 @@ class ChatService:
 
         prompt_id, prompt_body = await self._pick_prompt(chat.owner_external_id)
 
+        # Голос/файл: транскрипт кладём в content, иначе в БД пустая строка и
+        # follow-up/история ломаются, если media_refs не прочитали.
+        current_query = extract_rag_query(user_content, media_refs)
+        stored_content = (user_content or "").strip() or current_query
+
         user_message = ChatMessage(
             chat_id=chat_id,
             role="user",
-            content=user_content,
+            content=stored_content,
             media_refs=media_refs,
             prompt_id=prompt_id,
         )
@@ -403,7 +436,6 @@ class ChatService:
 
         # LangGraph DocIntel: classify_agent → search | write→validate | answer→validate
         # с chat_history / condense (как в pre-agent RAG), иначе follow-up ломается.
-        current_query = extract_rag_query(user_content, media_refs)
         if self.agent_enabled and current_query.strip():
             async for event in self._send_via_agents(
                 chat_id=chat_id,

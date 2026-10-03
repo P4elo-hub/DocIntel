@@ -17,6 +17,7 @@ sendMessageDraft — private-chat only. Если бот когда-нибудь 
 """
 
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterable
 from time import monotonic
@@ -63,12 +64,14 @@ def _chunk_text(text: str, limit: int = TG_SAFE_CHUNK_LEN) -> list[str]:
     return chunks
 
 
-def _format_sources_footer(sources: list[dict]) -> str:
+def _format_sources_footer(sources: list[dict], *, answer_text: str = "") -> str:
     """Компактный блок «Источники» под ответом: [1] file.md, [2] file.md.
 
-    Цитаты [n] уже стоят в тексте ответа; футер расшифровывает номера в имена
-    файлов из базы знаний."""
+    Если раздел уже есть в тексте ответа (agent pipeline) — не дублируем.
+    """
     if not sources:
+        return ""
+    if re.search(r"(?im)^#{0,3}\s*📚?\s*Источники\b", answer_text or ""):
         return ""
     lines = ["", "", "📚 Источники:"]
     for s in sources:
@@ -168,7 +171,11 @@ async def stream_to_chat(
         reply_markup = (
             feedback_kb(assistant_message_id) if assistant_message_id else None
         )
-        await _send_final(message, buffer + _format_sources_footer(sources), reply_markup)
+        await _send_final(
+            message,
+            buffer + _format_sources_footer(sources, answer_text=buffer),
+            reply_markup,
+        )
     return buffer
 
 
@@ -282,7 +289,7 @@ async def _stream_via_edit_text(
         reply_markup = (
             feedback_kb(assistant_message_id) if assistant_message_id else None
         )
-        full = buffer + _format_sources_footer(sources)
+        full = buffer + _format_sources_footer(sources, answer_text=buffer)
         chunks = _chunk_text(full, TG_SAFE_CHUNK_LEN)
         first = chunks[0] if chunks else full
         md = _to_tg_markdown(first)

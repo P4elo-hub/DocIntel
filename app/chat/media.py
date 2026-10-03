@@ -12,6 +12,7 @@ URI) прямо в основной chat.completions.create — без отде�
 """
 
 import base64
+import re
 from io import BytesIO
 
 from docx import Document
@@ -38,6 +39,8 @@ _DOC_PREFIXES = ("[документ PDF]:", "[документ DOCX]:")
 WHISPER_DOMAIN_PROMPT = (
     "История операций (History Ops, HistoryOps, HO). "
     "Order Gateway (OG, order-gateway). Composite (Композит), ScreenApi. "
+    "GET_LINKED_EVENTS, Linked Events, linkedEvents (не LinkedIn). "
+    "Вариационная маржа, вариационной маржи, varmargin_input, varmargin_output. "
     "БПХ (BPH), БК (BC), ДКА (DCA), ОШ, СберИнвестор, СИ2. "
     "gRPC, Thrift, proto, GET_TRADES, GET_DEALS, GET_DETAILS, SEND_DETAILS, "
     "GET_OPERATIONS_WITH_DETAILS, GET_OPERATIONS_FEED, GetTradeOrders. "
@@ -45,25 +48,83 @@ WHISPER_DOMAIN_PROMPT = (
 )
 
 
+def normalize_domain_query(text: str) -> str:
+    """Чинка типичных Whisper-ошибок доменных терминов перед RAG/агентами."""
+    t = (text or "").strip()
+    if not t:
+        return t
+    # Whisper: Linked Events → LinkedIn / LinkedIn.com
+    t = re.sub(r"(?i)\blinkedin\.com\b", "Linked Events", t)
+    t = re.sub(r"(?i)\blinkedin\b", "Linked Events", t)
+    t = re.sub(r"(?i)\blinked\s*in\b", "Linked Events", t)
+    # «в рационной моржи/мараже» → «вариационной маржи/марже»
+    t = re.sub(
+        r"(?i)\bв\s*рационн(\w*)\s+(?:морж|мараж|марж)(\w*)",
+        r"вариационн\1 марж\2",
+        t,
+    )
+    t = re.sub(
+        r"(?i)\bрационн(\w*)\s+(?:морж|мараж)(\w*)",
+        r"вариационн\1 марж\2",
+        t,
+    )
+    t = re.sub(r"(?i)\bмараж", "марж", t)
+    return t
+
+
+def extract_contract_anchors(*texts: str) -> list[str]:
+    """Якорные RAG-запросы по целевому обмену из реплики/истории."""
+    blob = "\n".join(t for t in texts if t).lower()
+    anchors: list[str] = []
+    if re.search(
+        r"get[_\s-]*linked|linked\s*events|linkedin|linkedevents",
+        blob,
+    ):
+        anchors.append(
+            "GET_LINKED_EVENTS linkedEvents JSON пример ответ "
+            "торговые операции комиссии BPH"
+        )
+    if re.search(r"order\s*gateway|\bog\b|огэ|gettradeorders", blob):
+        anchors.append("Order Gateway GetTradeOrders JSON пример торговые операции")
+    if re.search(r"вариацион|varmargin|рацион\w*\s+марж", blob):
+        if re.search(r"лент", blob):
+            anchors.append(
+                "вариационная маржа varmargin композит лента "
+                "operationsHistory screenData"
+            )
+        else:
+            anchors.append(
+                "вариационная маржа varmargin композит деталка "
+                "operationDetails screenData"
+            )
+    # unique preserve order
+    out: list[str] = []
+    for a in anchors:
+        if a not in out:
+            out.append(a)
+    return out
+
+
 def extract_rag_query(user_content: str, media_refs: dict | None) -> str:
     """Текст для RAG-поиска: caption/сообщение или транскрипт голоса."""
     text = (user_content or "").strip()
-    if text:
-        return text
-    if not media_refs or not isinstance(media_refs, dict):
-        return ""
-    part = media_refs.get("part")
-    if not part or part.get("type") != "text":
-        return ""
-    part_text = (part.get("text") or "").strip()
-    if part_text.startswith(_VOICE_PREFIX):
-        body = part_text[len(_VOICE_PREFIX) :].lstrip("\n")
-        return body.strip()
-    for prefix in _DOC_PREFIXES:
-        if part_text.startswith(prefix):
-            body = part_text[len(prefix) :].lstrip("\n")
-            return body[:2000].strip()
-    return ""
+    if not text:
+        if not media_refs or not isinstance(media_refs, dict):
+            return ""
+        part = media_refs.get("part")
+        if not part or part.get("type") != "text":
+            return ""
+        part_text = (part.get("text") or "").strip()
+        if part_text.startswith(_VOICE_PREFIX):
+            body = part_text[len(_VOICE_PREFIX) :].lstrip("\n")
+            text = body.strip()
+        else:
+            for prefix in _DOC_PREFIXES:
+                if part_text.startswith(prefix):
+                    body = part_text[len(prefix) :].lstrip("\n")
+                    text = body[:2000].strip()
+                    break
+    return normalize_domain_query(text)
 
 
 async def media_to_part(

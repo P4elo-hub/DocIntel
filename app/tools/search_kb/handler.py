@@ -16,6 +16,12 @@ _API_ID_RE = re.compile(
     r"\b(?:Get|Set|Send|Create|Update|Delete|List|Fetch|Post|Put|Patch)"
     r"[A-Z][A-Za-z0-9]+"
     r"|(?:[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+)\b"
+    # «SEND OPERATIONS» / «GET LINKED EVENTS» — пробелы вместо _
+    r"|(?:(?:GET|SET|SEND|CREATE|UPDATE|DELETE|LIST|FETCH|POST|PUT|PATCH)"
+    r"(?:\s+[A-Z][A-Z0-9]*){1,5})\b"
+    # ScreenApi, HistoryOps, Composite (сервисы/обмены без Get/Set-префикса)
+    r"|(?:[A-Z][a-zA-Z0-9]+(?:Api|API|Ops))\b"
+    r"|\bComposite\b"
 )
 _CONTRACT_HEADING_HINTS = (
     "запрос/ответ",
@@ -70,6 +76,15 @@ def extract_api_ids(text: str) -> list[str]:
     found = list(dict.fromkeys(_API_ID_RE.findall(text or "")))
     extras: list[str] = []
     for name in found:
+        # «SEND OPERATIONS» → SEND_OPERATIONS (+ CamelCase)
+        if " " in name:
+            snake = re.sub(r"\s+", "_", name.strip()).upper()
+            extras.append(snake)
+            parts = snake.lower().split("_")
+            extras.append(
+                parts[0].capitalize() + "".join(p.capitalize() for p in parts[1:])
+            )
+            continue
         if "_" not in name and re.match(
             r"^(Get|Set|Send|Create|Update|Delete|List|Fetch|Post|Put|Patch)",
             name,
@@ -214,14 +229,8 @@ def _chunk_has_contract_body(text: str) -> bool:
             "параметры ответа",
             "пример запроса",
             "пример ответа",
-            '"agreements"',
-            '"linkedevents"',
-            '"generalstatus"',
-            '"totaldeals"',
-            '"commissions"',
-            "generalstatus|",
-            "totaldeals|",
-            "linkedevents|",
+            "тело запроса",
+            "тело ответа",
         )
     ):
         return True
@@ -243,17 +252,17 @@ def _chunk_has_contract_body(text: str) -> bool:
 
 
 def _contract_field_richness(text: str) -> int:
+    """Насыщенность контракта без привязки к полям конкретного API."""
     low = (text or "").lower()
-    keys = (
-        "generalstatus",
-        "totaldeals",
-        "agreements",
-        "linkedevents",
-        "commissions",
-        "pagesize",
-        "operationdate",
-    )
-    return sum(1 for key in keys if key in low)
+    score = 0
+    if "```json" in low:
+        score += 3
+    # Плотность JSON-ключей / markdown-таблиц — универсальные сигналы контракта.
+    score += min(low.count('":'), 20)
+    score += min(low.count("|"), 30) // 3
+    if "параметр" in low or "пример" in low:
+        score += 1
+    return score
 
 
 def _chunk_is_meta_noise(text: str, heading: str) -> bool:
@@ -295,11 +304,8 @@ def _clip_contract_window(
         "пример запроса",
         "описание ответа",
         "описание запроса",
-        '"generalstatus"',
-        '"totaldeals"',
-        '"agreements"',
-        '"linkedevents"',
-        '"commissions"',
+        "тело ответа",
+        "тело запроса",
     ):
         pos = low.find(marker)
         if pos >= 0:

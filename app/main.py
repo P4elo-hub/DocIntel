@@ -56,6 +56,9 @@ async def _init_rag(app: FastAPI) -> None:
         rag_service = RAGService(settings)
         await asyncio.to_thread(rag_service.build)
         app.state.rag_service = rag_service
+        from app.services.agent_graph import set_rag_service
+
+        set_rag_service(rag_service)
         logger.info("rag_ready", collection=settings.rag_collection)
     except Exception as e:
         logger.warning("rag_unavailable", error=str(e))

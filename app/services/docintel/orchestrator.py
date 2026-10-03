@@ -2,15 +2,16 @@
 
 Контракт пайплайна (общий для любого обмена/фичи):
 
-1. Снаружи уже отработал независимый ``search_agent`` → артефакт
-   ``search_context`` (сырой результат search_kb).
+1. Снаружи уже отработал ``retrieve_rag`` → артефакт
+   ``search_context`` (фрагменты Qdrant).
 2. Для каждого kit-tool (цель, AS IS, TO BE, integration, …) —
    **новый** LLM-вызов без истории соседей.
 3. Вход каждого subagent строго:
    - бриф пользователя;
-   - ``search_context`` (один и тот же документ поиска);
+   - ``search_context`` (тот же Qdrant-контекст);
    - пакет methodology только этого kit-tool.
-4. После всех вызовов секции склеиваются в один Markdown.
+4. Придумывать JSON/поля вне Qdrant нельзя — только evidence или GAP.
+5. После всех вызовов секции склеиваются в один Markdown.
 """
 
 from __future__ import annotations
@@ -155,8 +156,10 @@ class SectionOrchestrator:
                     "content": (
                         f"Ты независимый kit-subagent `{tool_name}`.\n"
                         f"Заполни только раздел: **{step_label}**.\n"
-                        "Вход: бриф + документ поиска (search_context) + kit этого шага. "
-                        "Истории других разделов нет.\n\n"
+                        "Вход: бриф + search_context (Qdrant) + kit этого шага. "
+                        "Истории других разделов нет.\n"
+                        "ЗАПРЕТ: придумывать request/response/JSON вне Qdrant — "
+                        "копируй структуру из search_context или ставь GAP-*.\n\n"
                         f"{kit_package}"
                     ),
                 },

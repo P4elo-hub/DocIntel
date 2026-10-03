@@ -206,7 +206,14 @@ class RAGService:
         self._retriever = self._index.as_retriever(**retriever_kwargs)
 
         if self._settings.rag_use_reranker:
-            self._postprocessors = [self._build_reranker()]
+            try:
+                self._postprocessors = [self._build_reranker()]
+            except Exception as exc:  # noqa: BLE001 — HF cache / torch могут быть недоступны
+                logger.warning(
+                    "rag_reranker_unavailable: %s — работаем без реранкера (Qdrant dense)",
+                    exc,
+                )
+                self._postprocessors = []
 
     async def _retrieve(self, question: str) -> list[NodeWithScore]:
         nodes = await self._retriever.aretrieve(question)

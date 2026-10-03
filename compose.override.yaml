@@ -8,6 +8,8 @@ services:
       - ./app:/app/app:ro
       - ./bot:/app/bot:ro
       - ./feature-methodology-project:/app/feature-methodology-project:ro
+      - ./scripts:/app/scripts:ro
+      - ./eval:/app/eval
       - ./var/chats:/app/var/chats
       - ./data:/app/data
     environment:

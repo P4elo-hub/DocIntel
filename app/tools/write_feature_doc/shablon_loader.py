@@ -55,7 +55,6 @@ _SECTION_KEYWORDS: dict[str, list[str]] = {
     "4.1.1": [
         "rest", "grpc", "graphql", "soap", "endpoint", "синхрон", "https",
         "ручка", "api", "обмен", "метод", "параметр", "поле", "запрос", "ответ",
-        "getlinkedevents", "screenapi", "история",
     ],
     "4.1.2": ["kafka", "событие", "async", "очередь", "topic", "rabbit", "асинхрон"],
     "4.2.2": ["алгоритм", "обработк", "операц"],

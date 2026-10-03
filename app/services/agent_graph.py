@@ -3,14 +3,16 @@
 Архитектура (диплом / Telegram):
 
     START → classify_agent
-              ├─ search  → search_agent → END
-              ├─ write   → search_agent → write_agent → validate_agent → END
-              └─ answer  → search_agent → answer_agent → validate_agent → END
+              ├─ search  → retrieve_rag (Qdrant) → END
+              ├─ write   → retrieve_rag → write_agent → validate_agent → END
+              └─ answer  → retrieve_rag → answer_agent → validate_agent → END
 
 Три сценария:
-1. **search** — только поиск по KB (факты/чанки).
-2. **write** — документация фичи: поиск → kit-написнание → валидация.
-3. **answer** — ответ на вопрос (пример/контракт/пояснение): поиск → формулировка → валидация.
+1. **search** — только векторный поиск в Qdrant (чанки).
+2. **write** — документация фичи: Qdrant → kit-написнание → валидация по Qdrant.
+3. **answer** — ответ на вопрос: Qdrant → формулировка → валидация по Qdrant.
+
+Retrieval всегда через ``RAGService`` / Qdrant, не через lexical ``search_kb``.
 
 Агенты **независимы** (нет общей LLM-сессии / shared message history).
 
@@ -186,11 +188,29 @@ def _section_writer_client():
     return ToolCallClient(settings=get_settings())
 
 
-search_agent = build_search_agent()
+search_agent = build_search_agent()  # только для ReAct/бенчмарка Б6.3, не DocIntel pipeline
 
 
 # ---------------------------------------------------------------------------
-# Родительский граф: search_agent → write_agent
+# Qdrant RAG (боевой контур DocIntel)
+# ---------------------------------------------------------------------------
+
+_rag_service: Any | None = None
+
+
+def set_rag_service(rag: Any | None) -> None:
+    """Инжект RAGService из lifespan / ChatService."""
+    global _rag_service
+    _rag_service = rag
+
+
+def get_rag_service() -> Any | None:
+    """Текущий RAGService (Qdrant) или None, если ещё не готов."""
+    return _rag_service
+
+
+# ---------------------------------------------------------------------------
+# Родительский граф: retrieve_rag → write/answer → validate
 # ---------------------------------------------------------------------------
 
 
@@ -208,10 +228,46 @@ class DocIntelState(TypedDict):
     use_history: bool
     intent: IntentLabel
     search_context: str
+    # Чистый контекст Qdrant (без подмешивания истории чата).
+    rag_context: str
+    # Цитаты Qdrant из retrieve_rag: [{id, file_name, page, score, snippet}, ...]
+    rag_sources: list
     draft_answer: str
     final_answer: str
     # для отчёта / трейсинга
     agents_called: Annotated[list[str], operator.add]
+
+
+def format_sources_section(sources: list | None) -> str:
+    """Markdown-блок «Источники» по цитатам Qdrant."""
+    if not sources:
+        return ""
+    lines = ["## Источники"]
+    for s in sources:
+        if not isinstance(s, dict):
+            continue
+        sid = s.get("id")
+        name = s.get("file_name") or "unknown"
+        page = s.get("page")
+        suffix = f", стр. {page}" if page not in (None, "") else ""
+        if sid is not None:
+            lines.append(f"[{sid}] {name}{suffix}")
+        else:
+            lines.append(f"- {name}{suffix}")
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def append_sources_section(answer: str, sources: list | None) -> str:
+    """Добавляет раздел источников в конец ответа, если его ещё нет."""
+    text = (answer or "").rstrip()
+    if not text or not sources:
+        return text
+    if re.search(r"(?m)^#{1,3}\s*Источники\b", text):
+        return text
+    section = format_sources_section(sources)
+    if not section:
+        return text
+    return f"{text}\n\n{section}"
 
 
 _REJECT_MESSAGE = (
@@ -229,7 +285,15 @@ _DOC_DOMAIN_HINTS = re.compile(
     r"фич[аиеу]|раздел\w*|методолог|shablon|шаблон|"
     r"параметр\w*|поле|запрос|ответ|request|response|payload|schema|"
     r"спецификац|бриф|nfr|observab|webhook|\brest\b|grpc|kafka|soap|"
-    r"требования|сценари\w*|импорт|confluence"
+    r"требования|сценари\w*|импорт|confluence|"
+    r"композит|composite|history\s*ops|истори[яи]\s*операц|"
+    r"налог|tax|бph|bph|\bog\b|order\s*gateway|"
+    r"вариацион\w*|varmargin|вар\.?\s*марж|"
+    r"деталка|лент[аеуы]|screen\s*data|"
+    # SEND OPERATIONS / GET_DETAILS / get_operations — с пробелами и без
+    r"get[\s_]*operations|send[\s_]*operations|get[\s_]*details|"
+    r"send[\s_]*details|get[\s_]*linked|linked[\s_]*events|"
+    r"screen[\s_]*api|send[\s_]*operations[\s_]*feed"
     r")",
     re.IGNORECASE,
 )
@@ -239,12 +303,14 @@ _ANSWER_HINTS = re.compile(
     r"("
     r"(приведи|покажи|дай|какой|каков\w*|как выглядит|есть ли|объясни|расскажи)\w*"
     r".{0,40}(пример|request|response|запрос|ответ|контракт|параметр|"
-    r"поле|schema|payload|обмен|endpoint|api|интеграц)|"
-    r"пример\s+(запроса|ответа|request|response)|"
+    r"поле|schema|payload|обмен|endpoint|api|интеграц|операц|налог|json)|"
+    r"пример\s+(запроса|ответа|request|response|операц)|"
     r"пример\s+ответа\s+для|"
     r"какие\s+(поля|параметры|коды)|"
     r"как\s+работает\s+.{0,40}(обмен|api|endpoint|интеграц|импорт|ручку)|"
-    r"что\s+такое\s+.{0,40}(обмен|api|endpoint|интеграц|фич|контракт)"
+    r"что\s+такое\s+.{0,40}(обмен|api|endpoint|интеграц|фич|контракт)|"
+    r"(операци\w*|пример).{0,40}(налог|tax|композит|composite)|"
+    r"(налог|tax).{0,40}(композит|composite|операц|пример)"
     r")",
     re.IGNORECASE | re.DOTALL,
 )
@@ -302,34 +368,54 @@ _INTENT_LABELS = frozenset({"search", "write", "answer", "chat", "reject"})
 _HISTORY_LABELS = frozenset({"history", "fresh"})
 
 _CLASSIFY_AGENT_PROMPT = (
-    "Ты classify_agent DocIntel — агент анализа запроса пользователя.\n"
+    "Ты classify_agent DocIntel. Реши две вещи по смыслу (как человек в диалоге), "
+    "не по спискам ключевых слов.\n"
     "Верни РОВНО две метки через пробел: <intent> <history_mode>\n"
+    "Без пояснений, без пунктуации, без кавычек.\n"
     "\n"
-    "intent (один из):\n"
-    "search — найти фрагменты в KB без развёрнутого ответа.\n"
-    "write — сгенерировать документацию фичи (бриф → разделы), "
-    "ИЛИ повторить/переделать такую генерацию («ещё раз», «выполни задачу», "
-    "«переделай документ»), если в диалоге была задача на документацию.\n"
-    "answer — ответить по существующей документации "
-    "(пример request/response, контракт, пояснение по обмену/API).\n"
-    "chat — короткое приветствие / благодарность без рабочей задачи.\n"
-    "reject — запрос НЕ про документацию продукта DocIntel. "
-    "Если сомневаешься — reject.\n"
+    "## intent\n"
+    "answer — пользователь хочет ОТВЕТ по документации/контракту/примеру "
+    "(JSON, поля, маппинг, «как выглядит», «пришли пример», «переложи в формат X», "
+    "уточнение «это не то / не тот слой / на фронт»). "
+    "Даже если он злится или говорит «ещё раз» — если цель получить ответ/пример, "
+    "это answer, НЕ write.\n"
+    "write — пользователь хочет НАПИСАТЬ или ПЕРЕПИСАТЬ документ фичи "
+    "(бриф, разделы спеки, «задокументируй», «сделай документацию», "
+    "«переделай документ»). Повтор «ещё раз» → write только если в диалоге "
+    "реально была задача на документ, а не просьба снова прислать JSON.\n"
+    "search — явно просит только найти/показать куски KB без ответа.\n"
+    "chat — привет / спасибо без задачи.\n"
+    "reject — ТОЛЬКО темы вне продукта DocIntel/Истории операций "
+    "(погода, шутки, рецепты, общий код без KB). "
+    "НЕ reject: имя операции/термин продукта («Вариационная маржа», «налог»), "
+    "обмен/формат («SEND OPERATIONS»), «деталка», «лента», «композит», "
+    "короткое уточнение после диалога про KB — это answer.\n"
     "\n"
-    "history_mode (один из):\n"
-    "history — текущая реплика ПРОДОЛЖАЕТ или УТОЧНЯЕТ предыдущий диалог "
-    "(ссылки на прошлое, «ещё раз», «эту задачу», «в тот формат»). "
-    "Тогда downstream получит историю чата.\n"
-    "fresh — НОВАЯ самостоятельная тема. Историю НЕ использовать.\n"
+    "## history_mode\n"
+    "Спроси себя: чтобы правильно выполнить ТЕКУЩУЮ реплику, нужно ли видеть "
+    "предыдущие сообщения (прошлый JSON, прошлый неверный ответ, ту же операцию)?\n"
+    "history — да: уточнение, исправление, «не то», «на фронт», «в тот формат», "
+    "короткий целевой формат/имя операции после примера или отказа, "
+    "ссылка на прошлый ответ, продолжение той же задачи.\n"
+    "fresh — нет: новый самодостаточный вопрос, который понятен без диалога; "
+    "или смена темы на другой обмен/фичу без отсылки к прошлому.\n"
     "\n"
-    "Правила:\n"
-    "- Если блока «Контекст диалога» нет — history_mode=fresh.\n"
-    "- «Выполни задачу ещё раз» при брифе на документацию в истории → write history.\n"
-    "- chat и reject → fresh.\n"
+    "## Жёсткие правила\n"
+    "1) Нет блока «Контекст диалога» или он пуст → только fresh.\n"
+    "2) chat → всегда fresh. reject → всегда fresh, и только для тем вне продукта.\n"
+    "3) Не путай write и answer: просьба примера/JSON/формата = answer.\n"
+    "4) Не ставь fresh, если без прошлого ответа/примера текущую реплику "
+    "нельзя корректно выполнить.\n"
+    "5) Не ставь history «на всякий случай», если вопрос полный сам по себе "
+    "и не опирается на диалог.\n"
+    "6) Короткое имя операции/термина после диалога про документацию = "
+    "answer history, никогда reject.\n"
     "\n"
-    "Пример ответа: write history\n"
-    "Пример ответа: answer fresh\n"
-    "Без пояснений и пунктуации."
+    "Примеры (формат ответа):\n"
+    "answer history\n"
+    "answer fresh\n"
+    "write history\n"
+    "reject fresh"
 )
 
 
@@ -342,7 +428,7 @@ def _history_looks_like_write(chat_history: str) -> bool:
     return bool(
         re.search(
             r"(документац|задокументир|##\s*задача|бриф|write_|раздел\s*4\.|"
-            r"use\s*case|get_linked|send_operations|добав(ить|ление).{0,40}параметр)",
+            r"use\s*case|добав(ить|ление).{0,40}параметр)",
             h,
             re.IGNORECASE,
         )
@@ -372,7 +458,11 @@ def detect_use_history_heuristic(
     chat_history: str = "",
 ) -> bool:
     """Fallback: нужна ли история чата для текущей реплики."""
-    from app.chat.rag_query import _DIALOG_REFERENCE_RE, needs_context_expansion
+    from app.chat.rag_query import (
+        _DIALOG_REFERENCE_RE,
+        is_follow_up_clarification,
+        needs_context_expansion,
+    )
 
     text = (user_request or "").strip()
     history = (chat_history or "").strip()
@@ -380,15 +470,16 @@ def detect_use_history_heuristic(
         return False
     if _CHITCHAT.search(text):
         return False
-    # Явная ссылка на прошлые реплики — история нужна.
-    if _DIALOG_REFERENCE_RE.search(text):
+    # Fallback only (если LLM classify не распарсился).
+    if is_follow_up_clarification(text) or _DIALOG_REFERENCE_RE.search(text):
         return True
-    # Самодостаточный бриф / длинный вопрос с доменом — новая тема.
+    if needs_context_expansion(text):
+        return True
     if _WRITE_HINTS.search(text) and len(text) > 120:
         return False
     if len(text) >= 100 and _DOC_DOMAIN_HINTS.search(text):
         return False
-    return needs_context_expansion(text)
+    return False
 
 
 def detect_intent_heuristic(
@@ -423,6 +514,9 @@ def detect_intent_heuristic(
         re.I,
     ):
         return "answer"
+    # Короткий продуктный термин без глагола («Вариационная маржа.») — answer, не reject.
+    if _DOC_DOMAIN_HINTS.search(text):
+        return "answer"
     return "reject"
 
 
@@ -455,15 +549,20 @@ def _parse_classify_response(raw: str) -> tuple[IntentLabel | None, bool | None]
 
 
 async def _condense_with_history(current: str, chat_history: str) -> str:
-    """Свернуть follow-up в самостоятельный запрос (когда use_history=True)."""
-    from app.chat.rag_query import CONDENSE_SYSTEM_PROMPT, needs_context_expansion
+    """Свернуть follow-up в самостоятельный запрос (когда use_history=True).
+
+    Вызывается только если classify уже выбрал history — всегда сворачиваем,
+    иначе длинные правки («ты уверен? … неверно … комиссии») остаются без
+    якоря обмена и RAG уезжает не туда.
+    """
+    from app.chat.rag_query import CONDENSE_SYSTEM_PROMPT
 
     text = (current or "").strip()
     history = (chat_history or "").strip()
-    if not text or not history or not needs_context_expansion(text):
+    if not text or not history:
         return text
     try:
-        model = build_model(temperature=0.0).bind(max_tokens=120)
+        model = build_model(temperature=0.0).bind(max_tokens=200)
         response = await model.ainvoke(
             [
                 SystemMessage(content=CONDENSE_SYSTEM_PROMPT),
@@ -492,27 +591,22 @@ async def classify_request(
     *,
     chat_history: str = "",
 ) -> tuple[IntentLabel, bool]:
-    """classify_agent: (intent, use_history)."""
+    """classify_agent: (intent, use_history) — решение модели по промпту.
+
+    Regex/эвристики НЕ перетирают ответ модели. Fallback — только если
+    ответ не распарсился или LLM упал.
+    """
     text = user_request.strip()
     history = (chat_history or "").strip()
     if not text:
         return "chat", False
 
-    # Документный «приведи пример…» без write — answer; history только если follow-up.
-    if (
-        _ANSWER_HINTS.search(text)
-        and not _WRITE_HINTS.search(text)
-        and _DOC_DOMAIN_HINTS.search(text)
-        and not history
-    ):
-        log.info("intent_override label=answer fresh query=%r", text[:120])
-        return "answer", False
-
-    classify_input = f"Текущая реплика пользователя:\n{text[:1500]}"
+    classify_input = f"Текущая реплика пользователя:\n{text[:2000]}"
     if history:
         classify_input = (
-            f"Контекст диалога (есть предыдущие сообщения; реши, нужны ли они):\n"
-            f"{history[:2500]}\n\n"
+            "Контекст диалога (предыдущие сообщения). "
+            "Реши по смыслу, нужны ли они для текущей реплики:\n"
+            f"{history[:4000]}\n\n"
             f"{classify_input}"
         )
     else:
@@ -533,41 +627,33 @@ async def classify_request(
         raw = content if isinstance(content, str) else str(content)
         label, use_hist = _parse_classify_response(raw)
         if label is not None:
-            from app.chat.rag_query import _DIALOG_REFERENCE_RE
-
-            heur_hist = detect_use_history_heuristic(text, chat_history=history)
-            if use_hist is None:
-                use_hist = heur_hist
             if not history:
                 use_hist = False
-            # Явная отсылка к диалогу важнее «самодостаточной длины».
-            if history and _DIALOG_REFERENCE_RE.search(text):
-                use_hist = True
-            # Модель часто ставит history «на всякий случай»; самодостаточный
-            # вопрос (heuristic=False) не должен тащить чужую тему из чата.
-            elif use_hist and not heur_hist:
-                log.info(
-                    "classify_agent history→fresh (self-contained) query=%r",
-                    text[:120],
-                )
+            elif use_hist is None:
+                # Модель не вернула history_mode — мягкий fallback только тогда.
+                use_hist = detect_use_history_heuristic(text, chat_history=history)
+            # Safety: gpt-4o-mini иногда reject'ит продуктные термины («Вариационная маржа»).
+            if label == "reject":
+                in_doc_hist = bool(history and _DOC_DOMAIN_HINTS.search(history))
+                looks_product = bool(_DOC_DOMAIN_HINTS.search(text))
+                if looks_product or (in_doc_hist and len(text) <= 160):
+                    log.warning(
+                        "classify_override reject→answer query=%r hist=%s",
+                        text[:120],
+                        in_doc_hist,
+                    )
+                    label = "answer"
+                    use_hist = bool(history) and (
+                        bool(use_hist)
+                        or in_doc_hist
+                        or detect_use_history_heuristic(text, chat_history=history)
+                    )
+            if label in {"chat", "reject"}:
                 use_hist = False
-            # Follow-up по документации не должен улетать в reject.
-            if (
-                label == "reject"
-                and history
-                and _DOC_DOMAIN_HINTS.search(history)
-                and (use_hist or _DIALOG_REFERENCE_RE.search(text) or _DOC_DOMAIN_HINTS.search(text))
-            ):
-                log.info(
-                    "classify_agent reject→answer (doc follow-up) query=%r",
-                    text[:120],
-                )
-                label = "answer"
-                use_hist = True
             log.info(
                 "classify_agent label=%s use_history=%s query=%r",
                 label,
-                use_hist,
+                bool(use_hist),
                 text[:120],
             )
             return label, bool(use_hist)
@@ -620,39 +706,45 @@ def _tool_texts(messages: list[AnyMessage]) -> str:
 
 
 def _history_block(state: DocIntelState) -> str:
+    """История уже отфильтрована classify (пустая = fresh)."""
     history = (state.get("chat_history") or "").strip()
     if not history:
         return ""
     return (
-        "\n\nКонтекст диалога (если там уже были полные JSON/таблицы обменов — "
-        "это источник истины для контрактов, не сокращай):\n"
+        "\n\nКонтекст диалога (classify решил, что он нужен — "
+        "бери данные операции/пример отсюда; целевой обмен/API — "
+        "из текущего вопроса, не подменяй чужим из истории):\n"
         f"{history[:24_000]}\n"
     )
 
 
-def _merge_chat_contracts_into_kb(search_context: str, chat_history: str) -> str:
-    """Подмешивает контракты из прошлых ответов чата в KB для write/answer."""
-    kb = (search_context or "").strip()
-    history = (chat_history or "").strip()
-    if not history:
-        return kb
-    block = (
-        "### Контракты / примеры из предыдущих ответов в этом чате\n"
-        "Если ниже есть полные request/response — копируй поля отсюда целиком "
-        "(в т.ч. SEND_OPERATIONS, GET_OPERATIONS_WITH_DETAILS, GetLinkedEvents). "
-        "Не заменяй их коротким stub вроде `{operations:[...]}`.\n\n"
-        f"{history[:20_000]}"
-    )
-    if not kb:
-        return block
-    return f"{block}\n\n---\n\n### Результат search_kb\n{kb}"
+def _merge_chat_contracts_into_kb(
+    search_context: str,
+    chat_history: str,
+    *,
+    user_request: str = "",
+) -> str:
+    """Больше не подмешивает историю в KB.
+
+    Раньше прошлые JSON-ответы попадали в search_context и validate принимал
+    их за «документацию» — отсюда выдуманные/чужие контракты. История идёт
+    отдельно в answer/write как диалог, не как источник истины.
+    """
+    del chat_history, user_request
+    return (search_context or "").strip()
 
 
 async def classify_agent_node(state: DocIntelState) -> dict[str, Any]:
-    """Анализ запроса: intent + нужно ли пробрасывать историю чата дальше."""
-    original = (
+    """Анализ запроса: intent + нужно ли пробрасывать историю чата дальше.
+
+    Решение — только classify_agent (LLM). Downstream доверяет use_history:
+    если True — в state кладём историю; если False — обнуляем.
+    """
+    from app.chat.media import normalize_domain_query
+
+    original = normalize_domain_query(
         (state.get("original_user_message") or state.get("user_request") or "")
-    ).strip()
+    )
     available_history = (state.get("chat_history") or "").strip()
 
     intent, use_history = await classify_request(
@@ -662,21 +754,6 @@ async def classify_agent_node(state: DocIntelState) -> dict[str, Any]:
     if not available_history:
         use_history = False
 
-    # «Выполни задачу ещё раз» при write-брифе в истории — это write, не answer.
-    if (
-        available_history
-        and _REDO_TASK_RE.search(original)
-        and _history_looks_like_write(available_history)
-    ):
-        if intent != "write":
-            log.info(
-                "classify_agent redo→write (was %s) query=%r",
-                intent,
-                original[:120],
-            )
-        intent = "write"
-        use_history = True
-
     out: dict[str, Any] = {
         "intent": intent,
         "use_history": use_history,
@@ -684,17 +761,10 @@ async def classify_agent_node(state: DocIntelState) -> dict[str, Any]:
     }
 
     if use_history:
+        # Condense только для поиска; intent уже зафиксирован моделью и не меняем.
         condensed = await _condense_with_history(original, available_history)
         out["user_request"] = condensed
         out["chat_history"] = available_history
-        # Intent ставили по короткой реплике; после condense мог вскрыться write-бриф.
-        if intent == "answer" and _looks_like_write_brief(condensed):
-            intent = "write"
-            out["intent"] = "write"
-            log.info(
-                "classify_agent condensed→write query=%r",
-                condensed[:120],
-            )
         log.info(
             "classify_agent history=ON intent=%s chars=%d query=%r",
             intent,
@@ -723,60 +793,82 @@ async def classify_agent_node(state: DocIntelState) -> dict[str, Any]:
 intent_node = classify_agent_node
 
 
-async def search_agent_node(state: DocIntelState) -> dict[str, Any]:
-    """Узел графа = вызов отдельного search_agent → search_context."""
-    request = state["user_request"]
+async def retrieve_rag_node(state: DocIntelState) -> dict[str, Any]:
+    """Векторный retrieval из Qdrant → search_context (без search_kb / ReAct)."""
+    request = (state.get("user_request") or "").strip()
+    original = (state.get("original_user_message") or request).strip()
     intent = state.get("intent")
-    history = _history_block(state)
-    if intent == "write":
-        prompt = (
-            "Собери KB-контекст для последующего независимого write-агента.\n"
-            "Вызови search_kb ОТДЕЛЬНО по каждому обмену/API из брифа и "
-            "из контекста диалога (например GetLinkedEvents, "
-            "GET_OPERATIONS_WITH_DETAILS, SEND_OPERATIONS) + "
-            "«запрос/ответ», «параметры», «пример».\n"
-            "Нужны ПОЛНЫЕ таблицы полей и JSON-примеры — не краткое резюме.\n"
-            "Если в диалоге уже есть полный контракт — всё равно подтверди "
-            "поиском по KB, но не теряй поля из диалога.\n"
-            f"{history}\n"
-            f"Бриф:\n{request}"
-        )
-    elif intent == "answer":
-        prompt = (
-            "Собери KB-контекст для answer-агента.\n"
-            "Вызови search_kb по имени обмена/API из вопроса и по "
-            "«пример запроса/ответа», «параметры». "
-            "Если в диалоге уже есть пример операции — ищи целевой формат "
-            "(например SEND OPERATIONS) и правила трансформации.\n"
-            "Нужны полные JSON/таблицы из документов — не краткое резюме.\n"
-            f"{history}\n"
-            f"Вопрос:\n{request}"
-        )
-    else:
-        prompt = (
-            "Собери контекст по запросу пользователя. "
-            f"{history}\n"
-            f"Запрос:\n{request}"
-        )
-    result = await search_agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
-    messages = list(result.get("messages") or [])
-    tool_ctx = _tool_texts(messages)
-    summary = _last_ai_text(messages)
-    # write/answer получают сырой tool output + контракты из чата.
-    if intent in {"write", "answer"}:
-        search_context = tool_ctx or summary
-        search_context = _merge_chat_contracts_into_kb(
-            search_context, state.get("chat_history") or ""
-        )
-    else:
-        search_context = tool_ctx if tool_ctx else summary
-    out: dict[str, Any] = {
-        "search_context": search_context,
-        "agents_called": ["search_agent"],
+    history = (state.get("chat_history") or "").strip()
+    rag = get_rag_service()
+
+    if rag is None:
+        log.error("retrieve_rag: RAGService/Qdrant не готов")
+        msg = "База знаний (Qdrant) ещё не готова. Попробуй через минуту."
+        out: dict[str, Any] = {
+            "search_context": "",
+            "final_answer": msg,
+            "agents_called": ["retrieve_rag"],
+        }
+        return out
+
+    from app.chat.media import extract_contract_anchors, normalize_domain_query
+
+    queries: list[str] = []
+    norm_original = normalize_domain_query(original)
+    norm_request = normalize_domain_query(request)
+    for q in (original, norm_original, request, norm_request):
+        q = (q or "").strip()
+        if q and q not in queries:
+            queries.append(q)
+
+    # Якоря обмена из текущей реплики + истории (Linked Events ≠ LinkedIn,
+    # иначе RAG уезжает в чужой screenData/комиссию композита).
+    for anchor in extract_contract_anchors(norm_original, norm_request, history):
+        if anchor not in queries:
+            queries.append(anchor)
+    queries = queries[:5]
+
+    print(
+        f"  → retrieve_rag: Qdrant retrieval queries={len(queries)}",
+        flush=True,
+    )
+    try:
+        result = await rag.retrieve_context_multi(queries, prioritize_first=True)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("retrieve_rag_failed")
+        out = {
+            "search_context": "",
+            "final_answer": f"Ошибка поиска в Qdrant: {exc}",
+            "agents_called": ["retrieve_rag"],
+        }
+        return out
+
+    context = (result.get("context_str") or "").strip()
+    sources = list(result.get("sources") or [])
+    log.info(
+        "retrieve_rag intent=%s confident=%s top_score=%s sources=%d chars=%d",
+        intent,
+        result.get("confident"),
+        result.get("top_score"),
+        len(sources),
+        len(context),
+    )
+
+    out = {
+        # search_context = только Qdrant (история НЕ подмешивается).
+        "search_context": context,
+        "rag_context": context,
+        "rag_sources": sources,
+        "agents_called": ["retrieve_rag"],
     }
     if intent == "search":
-        out["final_answer"] = summary or search_context
+        body = context or "Ничего релевантного не найдено в базе знаний (Qdrant)."
+        out["final_answer"] = append_sources_section(body, sources)
     return out
+
+
+# Обратная совместимость имени узла.
+search_agent_node = retrieve_rag_node
 
 
 async def write_agent_node(state: DocIntelState) -> dict[str, Any]:
@@ -785,17 +877,19 @@ async def write_agent_node(state: DocIntelState) -> dict[str, Any]:
     from app.tools.feature_sections import build_execution_plan
 
     brief = state["user_request"]
+    original = (state.get("original_user_message") or brief).strip()
     history = (state.get("chat_history") or "").strip()
+    # history уже пустая, если classify сказал fresh.
     if history:
         brief = (
             f"{brief}\n\n"
-            "Контекст диалога (если перечислены несколько обменов — "
-            "в integration опиши КАЖДЫЙ отдельным подразделом 4.1.x с полным "
-            "request/response из KB/диалога):\n"
+            "Контекст диалога (classify оставил историю — "
+            "в integration опиши обмены из текущего брифа, не подменяй "
+            "чужими из истории):\n"
             f"{history[:16_000]}"
         )
-    kb = state.get("search_context") or ""
-    kb = _merge_chat_contracts_into_kb(kb, history)
+    # KB = только Qdrant; история уже в brief как диалог, не как контракт.
+    kb = (state.get("rag_context") or state.get("search_context") or "").strip()
     plan = build_execution_plan(brief)
     kit_names = [step.tool_name for step in plan]
     result = await SectionOrchestrator(_section_writer_client()).generate(
@@ -824,11 +918,13 @@ async def answer_agent_node(state: DocIntelState) -> dict[str, Any]:
             f"Исходная реплика: {original}\n"
             f"Самостоятельная формулировка (с учётом диалога): {standalone}"
         )
+    # history уже пустая при fresh — второй раз не режем regex'ами.
+    history = (state.get("chat_history") or "").strip()
     draft = await write_answer_from_kb(
         _section_writer_client(),
         user_request=user_request,
         search_context=state.get("search_context") or "",
-        chat_history=state.get("chat_history") or "",
+        chat_history=history,
     )
     return {
         "draft_answer": draft,
@@ -838,13 +934,27 @@ async def answer_agent_node(state: DocIntelState) -> dict[str, Any]:
 
 
 async def validate_agent_node(state: DocIntelState) -> dict[str, Any]:
-    """Независимый review: сам ищет контракты в RAG и правит draft."""
+    """Независимый review: сверяет draft с чистым Qdrant (не с историей чата)."""
     from app.services.docintel.validator import validate_against_kb
 
+    from app.chat.media import extract_contract_anchors, normalize_domain_query
+
     draft = (state.get("draft_answer") or state.get("final_answer") or "").strip()
-    # search_context от write — только fallback, если fresh RAG пуст.
-    kb = state.get("search_context") or ""
-    brief = state.get("user_request") or ""
+    # Только Qdrant. Не search_context после старых merge и не прошлые ответы.
+    kb = (state.get("rag_context") or state.get("search_context") or "").strip()
+    original = normalize_domain_query(
+        (state.get("original_user_message") or "").strip()
+    )
+    condensed = normalize_domain_query((state.get("user_request") or "").strip())
+    history = (state.get("chat_history") or "").strip()
+    brief = original or condensed
+    if original and condensed and original != condensed:
+        brief = f"{original}\n\n(поисковая формулировка: {condensed})"
+    # Якорь обмена из истории (GET_LINKED_EVENTS), иначе follow-up про комиссии
+    # уедет в screenData и hard-ground это «окнет».
+    anchors = extract_contract_anchors(original, condensed, history)
+    if anchors:
+        brief = f"{brief}\n\n(целевой обмен/контракт: {'; '.join(anchors)})"
     mode = "answer" if state.get("intent") == "answer" else "document"
     print(
         f"  → validate_agent: независимый RAG-review всего документа (mode={mode})",
@@ -857,36 +967,43 @@ async def validate_agent_node(state: DocIntelState) -> dict[str, Any]:
         draft_answer=draft,
         mode=mode,
     )
+    # Источники из retrieve_rag — в конец ответа/документа (reject/chat сюда не доходят).
+    fixed = append_sources_section(fixed, state.get("rag_sources") or [])
     return {
         "final_answer": fixed,
         "agents_called": ["validate_agent"],
     }
 
 
-def route_after_classify(state: DocIntelState) -> Literal["search_agent", "__end__"]:
-    """chat/reject → END; search/write/answer → search_agent."""
+def route_after_classify(state: DocIntelState) -> Literal["retrieve_rag", "__end__"]:
+    """chat/reject → END; search/write/answer → retrieve_rag (Qdrant)."""
     if state.get("intent") in {"chat", "reject"}:
         return "__end__"
-    return "search_agent"
+    return "retrieve_rag"
 
 
 def route_after_search(
     state: DocIntelState,
 ) -> Literal["write_agent", "answer_agent", "__end__"]:
-    """После поиска: ветвление по сценарию."""
+    """После Qdrant: ветвление по сценарию; при сбое RAG — END."""
     intent = state.get("intent")
-    if intent == "write":
-        return "write_agent"
-    if intent == "answer":
+    # retrieve_rag положил final_answer при недоступном/упавшем Qdrant.
+    if intent in {"write", "answer"}:
+        if (state.get("final_answer") or "").strip() and not (
+            state.get("search_context") or ""
+        ).strip():
+            return "__end__"
+        if intent == "write":
+            return "write_agent"
         return "answer_agent"
     return "__end__"
 
 
 def build_docintel_graph():
-    """classify → (search | search→write→validate | search→answer→validate)."""
+    """classify → (Qdrant | Qdrant→write→validate | Qdrant→answer→validate)."""
     builder = StateGraph(DocIntelState)
     builder.add_node("classify_agent", classify_agent_node)
-    builder.add_node("search_agent", search_agent_node)
+    builder.add_node("retrieve_rag", retrieve_rag_node)
     builder.add_node("write_agent", write_agent_node)
     builder.add_node("answer_agent", answer_agent_node)
     builder.add_node("validate_agent", validate_agent_node)
@@ -895,10 +1012,10 @@ def build_docintel_graph():
     builder.add_conditional_edges(
         "classify_agent",
         route_after_classify,
-        {"search_agent": "search_agent", "__end__": END},
+        {"retrieve_rag": "retrieve_rag", "__end__": END},
     )
     builder.add_conditional_edges(
-        "search_agent",
+        "retrieve_rag",
         route_after_search,
         {
             "write_agent": "write_agent",
@@ -921,12 +1038,17 @@ async def run_docintel_pipeline(
     chat_history: str = "",
     original_user_message: str = "",
     thread_id: str | None = None,
+    rag_service: Any | None = None,
 ) -> dict[str, Any]:
-    """Точка входа: classify (intent + use_history) → сценарий.
+    """Точка входа: classify (intent + use_history) → Qdrant → сценарий.
 
     ``chat_history`` — кандидат истории из БД чата; classify_agent решает,
     пробросить её дальше (history) или обнулить (fresh).
+    ``rag_service`` — опциональный инжект RAGService (иначе берётся из set_rag_service).
     """
+    if rag_service is not None:
+        set_rag_service(rag_service)
+
     config: dict[str, Any] | None = None
     if thread_id:
         config = {"configurable": {"thread_id": thread_id}}
@@ -940,21 +1062,31 @@ async def run_docintel_pipeline(
             "use_history": False,
             "intent": "search",
             "search_context": "",
+            "rag_context": "",
+            "rag_sources": [],
             "draft_answer": "",
             "final_answer": "",
             "agents_called": [],
         },
         config=config,
     )
+    sources = list(result.get("rag_sources") or [])
+    answer = result.get("final_answer") or ""
+    intent = result.get("intent")
+    # На случай раннего выхода (ошибка Qdrant) — всё равно допишем источники.
+    if intent not in {"reject", "chat"}:
+        answer = append_sources_section(answer, sources)
     return {
-        "intent": result.get("intent"),
+        "intent": intent,
         "use_history": bool(result.get("use_history")),
         "user_request": result.get("user_request") or user_request,
         "search_context": result.get("search_context") or "",
+        "rag_context": result.get("rag_context") or result.get("search_context") or "",
         "draft_answer": result.get("draft_answer") or "",
-        "final_answer": result.get("final_answer") or "",
+        "final_answer": answer,
         "agents_called": list(result.get("agents_called") or []),
-        "answer": result.get("final_answer") or "",
+        "answer": answer,
+        "sources": sources,
     }
 
 
@@ -1192,7 +1324,13 @@ __all__ = [
     "run_naive_b62",
     "run_prebuilt_graph",
     "search_agent",
+    "search_agent_node",
     "search_kb",
+    "set_rag_service",
+    "get_rag_service",
+    "format_sources_section",
+    "append_sources_section",
+    "retrieve_rag_node",
     "answer_agent_node",
     "classify_agent_node",
     "classify_request",

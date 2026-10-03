@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "ans_tax_screenapi_fresh",
+      "category": "answer_example",
+      "expect_intent": "answer",
+      "turns": [
+        {
+          "role": "user",
+          "content": "Пришли мне, пожалуйста, ответ от сервиса ScreenApi на фронт мобильного приложения для операции налога. Мне интересует деталка, нужен JSON."
+        }
+      ]
+    },
+    {
+      "id": "ans_linked_events_bph_fresh",
+      "category": "answer_example",
+      "expect_intent": "answer",
+      "turns": [
+        {
+          "role": "user",
+          "content": "Приведи мне, пожалуйста, пример какой-нибудь операции, которая приходит по обмену linked events из БПХ."
+        }
+      ]
+    },
+    {
+      "id": "ans_order_gateway_fresh",
+      "category": "answer_example",
+      "expect_intent": "answer",
+      "turns": [
+        {
+          "role": "user",
+          "content": "Приведи пример того, как торговые операции приходят из Order Gateway (GetTradeOrders). Нужен пример ответа."
+        }
+      ]
+    },
+    {
+      "id": "ans_correction_to_order_gateway",
+      "category": "answer_history",
+      "expect_intent": "answer",
+      "turns": [
+        {
+          "role": "user",
+          "content": "Приведи пример операции, которая приходит по обмену linked events из БПХ."
+        },
+        {
+          "role": "user",
+          "content": "Нет, это Linked Events, а мне нужно из Order Gateway, как приходят торговые операции. Приведи пример ответа Order Gateway."
+        }
+      ]
+    },
+    {
+      "id": "search_linked_events_doc",
+      "category": "search",
+      "expect_intent": "search",
+      "turns": [
+        {
+          "role": "user",
+          "content": "Найди в базе знаний документ про получение торговых операций из BPH по обмену GET_LINKED_EVENTS."
+        }
+      ]
+    },
+    {
+      "id": "write_add_yield_linked_events",
+      "category": "write_feature",
+      "expect_intent": "write",
+      "turns": [
+        {
+          "role": "user",
+          "content": "Сделай документацию фичи: добавить поле yield в обмен Linked Events (GET_LINKED_EVENTS) при получении торговых операций из БПХ. Опиши цель, use case и интеграцию с примером контракта."
+        }
+      ]
+    },
+    {
+      "id": "chat_hello",
+      "category": "chat",
+      "expect_intent": "chat",
+      "turns": [
+        {
+          "role": "user",
+          "content": "Привет"
+        }
+      ]
+    },
+    {
+      "id": "reject_offtopic",
+      "category": "reject",
+      "expect_intent": "reject",
+      "turns": [
+        {
+          "role": "user",
+          "content": "Какая сегодня погода в Москве?"
+        }
+      ]
+    }
+  ]
+}
