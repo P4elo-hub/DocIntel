@@ -1,8 +1,13 @@
-# llm-service
+# DocIntel (llm-service)
 
-FastAPI-сервис для курса «ИИ-разработчик»: generic LLM-чат (`/chat`), DocIntel с tool calling (`/features/*`), **серверная история чатов и Telegram-бот** (M4.1 / M4Б2), **RAG по базе знаний на LlamaIndex + Qdrant** (Б5, `/rag/query`, встроен в чат-бота), observability (structlog + Phoenix), защитный слой (Б3.8) и eval/garak.
+AI-ассистент для системного аналитика: поиск по базе знаний и генерация документации фич.
+FastAPI-сервис курса «ИИ-разработчик»: generic LLM-чат (`/chat`), DocIntel tool calling (`/features/*`),
+**серверная история чатов и Telegram-бот**, **RAG (LlamaIndex + Qdrant)**, **LangGraph-агенты**
+(`search_agent` → `write_agent` в Telegram при `CHAT_AGENT_ENABLED=true`), observability (Phoenix),
+защитный слой (Б3.8) и eval/garak.
 
-Swagger UI — http://localhost:8000/docs
+Swagger UI — http://localhost:8000/docs  
+Шпаргалка портов — [docs/services.md](docs/services.md)
 
 ## Быстрый старт с Telegram-ботом
 
@@ -56,10 +61,11 @@ docker compose up --build
 |------|------------|
 | **Generic chat** | `POST /chat` — прямой вызов OpenAI, кеш Redis при `temperature=0`, retry, streaming/batch |
 | **Chat history + bot** | `POST /chats/*` — история в Postgres, multipart/SSE, модерация, rate-limit; **`bot/`** — Telegram-клиент |
-| **DocIntel** | `POST /features/chat` — tool calling; `POST /features/generate` — sectioned-документация |
-| **RAG** | `POST /rag/query` — ответ по базе знаний с цитатами; индексация в Qdrant через LlamaIndex; тот же RAG встроен в Telegram-бота (Вариант C) |
+| **LangGraph-агенты** | `search_agent` (`search_kb`) → при «напиши документацию» `write_agent` (`write_feature_doc`); оркестратор `docintel_graph` в `app/services/agent_graph.py`. В Telegram/web при `CHAT_AGENT_ENABLED=true` |
+| **DocIntel tools API** | `POST /features/chat` — tool calling; `POST /features/generate` — sectioned-документация (классический путь без графа) |
+| **RAG** | `POST /rag/query` — ответ по базе с цитатами; индексация в Qdrant. В чате — fallback, если агенты выключены или intent=`chat` (светская беседа) |
 | **Security** | Валидация входа, canary, фильтр выхода, PII в логах, rate limit — на `/chat` и `/features/chat` |
-| **Observability** | structlog (JSON), OpenTelemetry → Phoenix, `X-Request-ID`, `X-LLM-Cost-USD` |
+| **Observability** | structlog (JSON), OpenTelemetry → Phoenix (`diploma-fastapi`), `X-Request-ID`, `X-LLM-Cost-USD` |
 | **Eval / Garak** | G-Eval + quality gates; сканирование prompt-injection |
 
 Swagger UI — http://localhost:8000/docs
@@ -69,23 +75,27 @@ Swagger UI — http://localhost:8000/docs
 ```
 app/
 ├── main.py                    # lifespan, middleware, routers
-├── chat/                      # /chats — история, SSE, модерация, media, RAG-контекст
+├── chat/                      # /chats — история, SSE; при CHAT_AGENT_ENABLED → агенты
 ├── admin/                     # /chats/admin/* — stats, broadcast, handoff
 ├── moderation/, ratelimit/    # каскад модерации, лимит сообщений (Postgres)
 ├── routers/                   # /chat, /features/*, /rag, /documents, health, models
-├── services/                  # llm, docintel, rag, ingestion, vector_store, embeddings, …
+├── services/
+│   ├── agent_graph.py         # LangGraph: search_agent, write_agent, docintel_graph
+│   ├── rag.py, ingestion.py   # RAG + индексация корпуса
+│   └── docintel/, …           # tool calling DocIntel
 └── observability/             # structlog, PII, tracing → Phoenix
 
 bot/                           # Telegram: long polling + /notify :9000
-├── __main__.py                # python -m bot
-├── handlers/                  # text, media, commands, fsm, feedback, admin
-└── services/backend_client.py # HTTP-клиент к /chats
+scripts/
+├── visualize_graph.py         # Mermaid/PNG схем агентов → docs/
+└── bench_agents.py            # бенч ReAct vs graph (Б6.3)
 
-alembic/                       # миграции Postgres (чаты + production-таблицы)
-data/                          # корпуса RAG: rag-block-03 (sample), my-kb (личная, gitignore)
+alembic/                       # миграции Postgres
+data/                          # корпуса RAG: rag-block-03 (sample), my-kb (gitignore)
 docs/services.md               # Шпаргалка: порты, ссылки, reindex, логи
-docs/docker.md                 # Docker, бот, Qdrant, логи, Redis, Adminer
-docs/rag.md                    # RAG: LlamaIndex, Qdrant, чанкинг, метаданные, reindex
+docs/docker.md                 # Docker, бот, Qdrant, Adminer
+docs/rag.md                    # RAG
+docs/agent-graph-*.md / .png   # схемы и отчёт по LangGraph-агентам
 ```
 
 ## Запуск локально
@@ -124,7 +134,9 @@ docker compose up --build
 | `phoenix` | 6006 | Трейсы LLM |
 | `adminer` | 8080 | Веб-UI Postgres |
 
-**Полная инструкция:** [docs/docker.md](docs/docker.md) — токен бота, логи, Redis, Adminer, SQL, troubleshooting.
+Быстрые ссылки после `docker compose up`: Swagger http://localhost:8000/docs · Adminer http://localhost:8080 · Qdrant UI http://localhost:6333/dashboard · Phoenix http://localhost:6006 (проект `diploma-fastapi`).
+
+**Полная инструкция:** [docs/services.md](docs/services.md) (шпаргалка) · [docs/docker.md](docs/docker.md) (подробно).
 
 Переменные в `compose.yaml` (можно переопределить в `.env`):
 
@@ -142,13 +154,46 @@ docker compose up --build
 
 Garak и eval в образ **не входят** — это dev/host-инструменты; в контейнер копируется только `app/` и `feature-methodology-project/`.
 
+## LangGraph-агенты (Telegram / `/chats`)
+
+При **`CHAT_AGENT_ENABLED=true`** (по умолчанию) сообщения из Telegram идут так:
+
+```text
+intent_router
+  ├─ вопрос по документации → search_agent  (tool: search_kb)
+  ├─ «напиши / задокументируй фичу» → search_agent → write_agent  (tool: write_feature_doc)
+  └─ «привет» / светская беседа → короткий ответ (без агентов; дальше может сработать RAG)
+```
+
+| Компонент | Где |
+|-----------|-----|
+| Оркестратор + два агента | `app/services/agent_graph.py` (`docintel_graph`, `run_docintel_pipeline`) |
+| Врезка в чат | `app/chat/service.py` (`_send_via_agents`) |
+| Схемы | [docs/agent-graph-diagrams.md](docs/agent-graph-diagrams.md), [docs/agent-graph.png](docs/agent-graph.png) |
+| Отчёт Б6.3 + бенч | [docs/agent-graph-report.md](docs/agent-graph-report.md), `scripts/bench_agents.py` |
+
+```bash
+# Перерисовать схемы
+uv run python scripts/visualize_graph.py
+
+# Прогон пайплайна без Telegram
+uv run python -c "
+import asyncio
+from app.services.agent_graph import run_docintel_pipeline
+print(asyncio.run(run_docintel_pipeline('Как работает импорт из Confluence?'))['agents_called'])
+"
+```
+
+Классический DocIntel tool-calling без графа по-прежнему на `POST /features/chat` и `POST /features/generate`.
+
 ## RAG (база знаний)
 
-RAG на **LlamaIndex + Qdrant**: корпус markdown-документов индексируется в
-векторное хранилище Qdrant, а ответ строится строго по найденному контексту с
-цитатами `[n]`. Тот же RAG встроен в Telegram-бота (Вариант C): при
-`CHAT_RAG_ENABLED=true` каждый вопрос (в т.ч. голосовой — по транскрипту)
-обогащается найденными источниками, и модель отвечает по базе знаний.
+RAG на **LlamaIndex + Qdrant**: корпус markdown индексируется в Qdrant, ответ — по
+найденному контексту с цитатами `[n]` (`POST /rag/query`).
+
+В чате/боте RAG (Вариант C, `CHAT_RAG_ENABLED=true`) используется как **запасной путь**:
+когда агенты выключены (`CHAT_AGENT_ENABLED=false`) или intent = светская беседа.
+Голосовые сообщения по-прежнему транскрибируются (Whisper) до текста запроса.
 
 **Пайплайн:** `SimpleDirectoryReader → header-aware чанкинг → text-embedding-3-small
 → Qdrant → dense-поиск (top_k) → (опц. reranker) → LLM с цитатами`. Порог
@@ -159,7 +204,8 @@ RAG на **LlamaIndex + Qdrant**: корпус markdown-документов и�
 | Ретрив + синтез (LlamaIndex) | `app/services/rag.py` |
 | Индексация корпуса, метаданные, дедупликация | `app/services/ingestion.py` |
 | Векторное хранилище (Qdrant) | `app/services/vector_store.py`, сервис `qdrant` в Docker |
-| Встраивание RAG в чат/бота | `app/chat/service.py` |
+| UI Qdrant | http://localhost:6333/dashboard (корень `:6333` — JSON API, не UI) |
+| Fallback RAG в чате | `app/chat/service.py` (если агенты выкл. / chitchat) |
 | Bare-metal сравнение (без фреймворка) | `app/services/rag_baremetal.py` |
 
 **Корпуса** в `data/`:
@@ -397,7 +443,8 @@ curl -s http://localhost:8000/models
 | `LLM__DEFAULT_MODEL` | `gpt-4o-mini` | Модель по умолчанию |
 | `REDIS_URL` | `redis://localhost:6379/0` | Кеш + rate limit |
 | `QDRANT_URL` | `http://localhost:6333` | Векторное хранилище RAG (в Docker — `http://qdrant:6333`) |
-| `CHAT_RAG_ENABLED` | `true` | Встроенный RAG в чат/бота (см. раздел RAG и `docs/rag.md`) |
+| `CHAT_AGENT_ENABLED` | `true` | Telegram/web → LangGraph `search_agent` / `write_agent` |
+| `CHAT_RAG_ENABLED` | `true` | Fallback RAG в чате (если агенты выкл. / chitchat); см. `docs/rag.md` |
 | `SECURITY_ENABLED` | `true` | Защитный слой |
 | `RATE_LIMIT_PER_MIN` | `30` | Rate limit (0 = выкл.) |
 | `PHOENIX_COLLECTOR_ENDPOINT` | — | OTLP traces → Phoenix |
