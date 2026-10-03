@@ -1,26 +1,30 @@
 # Схемы агентов DocIntel
 
-## Главная: два агента в Telegram/web
+## Главная: classify_agent + три сценария
 
 Путь: Telegram → backend `/chats` → `ChatService` → `docintel_graph`.
 
 ```mermaid
 flowchart TD
-    START([START]) --> intent_router[intent_router]
-    intent_router -->|привет| FINISH([END])
-    intent_router -->|вопрос или напиши фичу| search_agent[search_agent<br/>tool: search_kb]
-    search_agent -->|просто вопрос| FINISH
-    search_agent -->|сделай документацию| write_agent[write_agent<br/>tool: write_feature_doc]
-    write_agent --> FINISH
+    START([START]) --> classify_agent[classify_agent]
+    classify_agent -->|привет| FINISH([END])
+    classify_agent -->|search / write / answer| search_agent[search_agent<br/>tool: search_kb]
+    search_agent -->|search| FINISH
+    search_agent -->|write| write_agent[write_agent<br/>kit-subagents]
+    search_agent -->|answer| answer_agent[answer_agent<br/>ответ по KB]
+    write_agent --> validate_agent[validate_agent]
+    answer_agent --> validate_agent
+    validate_agent --> FINISH
 ```
 
 ![docintel graph](agent-graph.png)
 
-| Сообщение в Telegram | Что вызывается |
-|----------------------|----------------|
-| «Как работает импорт из Confluence?» | `search_agent` |
-| «Сделай документацию для новой ручки webhook» | `search_agent` → `write_agent` |
-| «Привет» | короткий ответ без агентов |
+| Сообщение в Telegram | Сценарий | Что вызывается |
+|----------------------|----------|----------------|
+| «Найди документ GetLinkedEvents» | search | `search_agent` |
+| «Приведи пример ответа для SEND OPERATIONS» | answer | `search_agent` → `answer_agent` → `validate_agent` |
+| «Сделай документацию: yield в GetLinkedEvents» | write | `search_agent` → `write_agent` → `validate_agent` |
+| «Привет» | chat | короткий ответ без рабочих агентов |
 
 ## ReAct (ДЗ Б6.3)
 

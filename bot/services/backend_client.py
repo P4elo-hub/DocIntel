@@ -74,7 +74,8 @@ class BackendClient:
             data=data,
             files=files,
             headers=headers,
-            timeout=120.0,
+            # Sectioned kit-pipeline (несколько LLM-вызовов) — до 25 мин.
+            timeout=1500.0,
         ) as r:
             r.raise_for_status()
             async for line in r.aiter_lines():

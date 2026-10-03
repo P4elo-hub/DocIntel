@@ -31,6 +31,37 @@ from bot.keyboards.inline import feedback_kb
 
 log = logging.getLogger(__name__)
 
+# Лимит Telegram на одно сообщение. MarkdownV2-эскейп раздувает текст,
+# поэтому режем с запасом; при plain-fallback используем полный лимит.
+TG_MAX_MESSAGE_LEN = 4096
+TG_SAFE_CHUNK_LEN = 3500
+
+
+def _chunk_text(text: str, limit: int = TG_SAFE_CHUNK_LEN) -> list[str]:
+    """Режет длинный ответ на куски ≤ limit, по возможности по абзацам."""
+    text = text or ""
+    if len(text) <= limit:
+        return [text] if text else []
+
+    chunks: list[str] = []
+    rest = text
+    while rest:
+        if len(rest) <= limit:
+            chunks.append(rest)
+            break
+        cut = rest.rfind("\n\n", 0, limit)
+        if cut < limit // 3:
+            cut = rest.rfind("\n", 0, limit)
+        if cut < limit // 3:
+            cut = limit
+        piece = rest[:cut].rstrip()
+        if not piece:
+            piece = rest[:limit]
+            cut = limit
+        chunks.append(piece)
+        rest = rest[cut:].lstrip("\n")
+    return chunks
+
 
 def _format_sources_footer(sources: list[dict]) -> str:
     """Компактный блок «Источники» под ответом: [1] file.md, [2] file.md.
@@ -112,10 +143,12 @@ async def stream_to_chat(
             if now - last_draft_at < DRAFT_MIN_INTERVAL_SEC:
                 continue   # тротлим — финальный send_message покажет полный текст
             try:
+                # Draft тоже ограничен лимитом Telegram — шлём хвост буфера.
+                draft_text = buffer if len(buffer) <= TG_MAX_MESSAGE_LEN else buffer[-TG_MAX_MESSAGE_LEN:]
                 await message.bot.send_message_draft(
                     chat_id=message.chat.id,
                     draft_id=draft_id,
-                    text=buffer,
+                    text=draft_text,
                 )
                 last_draft_at = now
             except TelegramRetryAfter as e:
@@ -140,26 +173,75 @@ async def stream_to_chat(
 
 
 async def _send_final(message: Message, text: str, reply_markup) -> None:
-    """Шлёт финальный send_message с Telegram MarkdownV2.
+    """Шлёт финальный ответ; длинные документы режет на несколько сообщений.
 
-    Если MarkdownV2-парсер Telegram'а спотыкается на конкретном тексте
-    (бывает на нестандартных конструкциях LLM) — graceful fallback на plain.
+    Telegram лимит — 4096 символов. Документация фичи часто длиннее.
+    Feedback-клавиатура вешается только на последнее сообщение.
     """
+    chunks = _chunk_text(text, TG_SAFE_CHUNK_LEN)
+    if not chunks:
+        return
+    total = len(chunks)
+    for index, chunk in enumerate(chunks):
+        markup = reply_markup if index == total - 1 else None
+        suffix = f"\n\n({index + 1}/{total})" if total > 1 else ""
+        await _send_one_chunk(message, chunk + suffix, markup)
+
+
+async def _send_plain(message: Message, text: str, reply_markup) -> None:
+    """Plain-текст без parse_mode.
+
+    У бота DefaultBotProperties(parse_mode=HTML) — если не сбросить явно,
+    Telegram пытается парсить `<include …>` / PlantUML / XML из документации
+    и падает с «Unsupported start tag».
+    """
+    await message.bot.send_message(
+        chat_id=message.chat.id,
+        text=text,
+        reply_markup=reply_markup,
+        parse_mode=None,
+    )
+
+
+async def _send_one_chunk(message: Message, text: str, reply_markup) -> None:
+    """Один кусок: MarkdownV2, при ошибке/длине — plain (при необходимости ещё режем)."""
     md = _to_tg_markdown(text)
-    try:
-        await message.bot.send_message(
-            chat_id=message.chat.id,
-            text=md,
-            reply_markup=reply_markup,
-            parse_mode=ParseMode.MARKDOWN_V2,
+    if len(md) <= TG_MAX_MESSAGE_LEN:
+        try:
+            await message.bot.send_message(
+                chat_id=message.chat.id,
+                text=md,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.MARKDOWN_V2,
+            )
+            return
+        except TelegramBadRequest as e:
+            log.warning("MarkdownV2 parse failed, fallback to plain: %s", e)
+    else:
+        log.warning(
+            "MarkdownV2 too long after escape (%s chars), fallback to plain",
+            len(md),
         )
-    except TelegramBadRequest as e:
-        log.warning("MarkdownV2 parse failed, fallback to plain: %s", e)
-        await message.bot.send_message(
-            chat_id=message.chat.id,
-            text=text,
-            reply_markup=reply_markup,
-        )
+
+    plain_chunks = _chunk_text(text, TG_MAX_MESSAGE_LEN)
+    for index, part in enumerate(plain_chunks):
+        markup = reply_markup if index == len(plain_chunks) - 1 else None
+        try:
+            await _send_plain(message, part, markup)
+        except TelegramBadRequest as e:
+            log.error("plain send failed even after chunking: %s", e)
+            # На крайний случай вычищаем угловые скобки (псевдо-HTML/XML в доках).
+            safe = (
+                part[: TG_MAX_MESSAGE_LEN - 40]
+                .replace("<", "‹")
+                .replace(">", "›")
+                + "\n…(обрезано)"
+            )
+            try:
+                await _send_plain(message, safe, markup)
+            except TelegramBadRequest as e2:
+                log.error("sanitized plain send also failed: %s", e2)
+            break
 
 
 async def _stream_via_edit_text(
@@ -200,19 +282,41 @@ async def _stream_via_edit_text(
         reply_markup = (
             feedback_kb(assistant_message_id) if assistant_message_id else None
         )
-        buffer = buffer + _format_sources_footer(sources)
-        md = _to_tg_markdown(buffer)
+        full = buffer + _format_sources_footer(sources)
+        chunks = _chunk_text(full, TG_SAFE_CHUNK_LEN)
+        first = chunks[0] if chunks else full
+        md = _to_tg_markdown(first)
         try:
-            await sent.edit_text(
-                md,
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.MARKDOWN_V2,
-            )
+            if len(md) <= TG_MAX_MESSAGE_LEN:
+                await sent.edit_text(
+                    md,
+                    reply_markup=reply_markup if len(chunks) <= 1 else None,
+                    parse_mode=ParseMode.MARKDOWN_V2,
+                )
+            else:
+                await sent.edit_text(
+                    first[:TG_MAX_MESSAGE_LEN],
+                    reply_markup=reply_markup if len(chunks) <= 1 else None,
+                    parse_mode=None,
+                )
         except TelegramBadRequest:
             try:
-                await sent.edit_text(buffer, reply_markup=reply_markup)
+                await sent.edit_text(
+                    first[:TG_MAX_MESSAGE_LEN],
+                    reply_markup=reply_markup if len(chunks) <= 1 else None,
+                    parse_mode=None,
+                )
             except (TelegramBadRequest, TelegramRetryAfter):
                 pass
         except TelegramRetryAfter:
             pass
+        # Остаток длинного ответа — отдельными сообщениями.
+        if len(chunks) > 1:
+            for index, chunk in enumerate(chunks[1:], start=2):
+                markup = reply_markup if index == len(chunks) else None
+                await _send_one_chunk(
+                    message,
+                    chunk + f"\n\n({index}/{len(chunks)})",
+                    markup,
+                )
     return buffer

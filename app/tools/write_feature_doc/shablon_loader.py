@@ -52,7 +52,11 @@ _SECTION_KEYWORDS: dict[str, list[str]] = {
     "1.1": ["цель", "бизнес", "smart", "стейкхолдер", "требован", "br"],
     "1.2-usecase": ["as is", "asis", "сейчас", "проблем", "синхрон", "было", "текущ"],
     "1.3-usecase": ["use case", "сценарий", "tobe", "to be", "процесс", "целев", "диаграмм", "uml"],
-    "4.1.1": ["rest", "grpc", "graphql", "soap", "endpoint", "синхрон", "https"],
+    "4.1.1": [
+        "rest", "grpc", "graphql", "soap", "endpoint", "синхрон", "https",
+        "ручка", "api", "обмен", "метод", "параметр", "поле", "запрос", "ответ",
+        "getlinkedevents", "screenapi", "история",
+    ],
     "4.1.2": ["kafka", "событие", "async", "очередь", "topic", "rabbit", "асинхрон"],
     "4.2.2": ["алгоритм", "обработк", "операц"],
     "4.2.3": ["модель данных", "бд", "entity", "таблиц", "er", "миграц", "postgresql", "хранилищ"],
@@ -61,9 +65,18 @@ _SECTION_KEYWORDS: dict[str, list[str]] = {
     "5.2-reliability": ["надежност", "slo", "sla", "degradation", "fallback"],
     "5.3.1": ["логирован", "logging", "журнал", "eventtype", "логи"],
     "5.3.2": ["метрик", "prometheus", "мониторинг"],
-    "5.4": ["конфигурац", "config", "configmap", "параметр"],
+    # «параметр» чаще про поле API/контракта (4.1.1), не про ConfigMap —
+    # конфиг оставляем на явные configuration/configmap/настройк.
+    "5.4": ["конфигурац", "config", "configmap", "настройк", "feature toggle config"],
     "5.5": ["toggle", "тогл", "feature flag", "раскатк"],
 }
+
+# Имена обменов/API в CamelCase / SCREAMING_SNAKE → интеграционный раздел.
+_API_NAME_RE = re.compile(
+    r"\b(?:Get|Set|Send|Create|Update|Delete|List|Fetch|Post|Put|Patch)"
+    r"[A-Z][A-Za-z0-9]+"
+    r"|(?:[A-Z][A-Z0-9]+_(?:[A-Z0-9]+)+)\b"
+)
 
 # Ядро полного документа: AS IS + TO BE всегда при full
 _FULL_DOCUMENT_CORE = [
@@ -226,6 +239,17 @@ def infer_sections(feature_brief: str, explicit: str | None = None) -> list[str]
     if _tokenize(feature_brief) & migration_markers:
         chosen.add("1.2-usecase")
 
+    # Имя API/обмена или «новый параметр/поле» → sync integration + observability
+    api_change = bool(_API_NAME_RE.search(feature_brief))
+    param_change = bool(
+        _tokenize(feature_brief)
+        & _tokenize("параметр поле атрибут свойство проброс пробросить добавить новый")
+    )
+    if api_change or ("4.1.1" in chosen) or param_change:
+        chosen.add("4.1.1")
+        chosen.add("5.3.1")
+        chosen.add("5.3.2")
+
     # Kafka/async — событие, не модель данных по умолчанию
     if "4.1.2" in chosen:
         chosen.discard("4.2.3")
@@ -235,6 +259,22 @@ def infer_sections(feature_brief: str, explicit: str | None = None) -> list[str]
     if _tokenize(feature_brief) & observability:
         chosen.add("5.3.1")
         chosen.add("5.3.2")
+
+    # Полная документация фичи — базовый NFR-каркас (без раздувания UML/data).
+    # Стеммы: «документацию» / «задокументировать» не совпадут как целые токены.
+    brief_l = feature_brief.lower()
+    if any(
+        marker in brief_l
+        for marker in ("документац", "задокументир", "спецификац", "полный документ")
+    ):
+        chosen.update({
+            "5.1",
+            "5.2-performance",
+            "5.2-reliability",
+            "5.3.1",
+            "5.3.2",
+            "5.4",
+        })
 
     return sorted(chosen, key=_section_sort_key)
 
@@ -365,13 +405,58 @@ def _strip_kit_template_title(body: str) -> str:
     return "\n".join(lines).strip()
 
 
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*\n.*?```", re.DOTALL | re.IGNORECASE)
+_PLACEHOLDER_JSON_MARKERS = (
+    "param1",
+    "param2",
+    '"item1"',
+    '"processed": true',
+    "123e4567-e89b-12d3-a456-426614174000",
+    '"status": "SUCCESS"',
+    '"timestamp": "2026-02-04T10:30:00Z"',
+)
+# Учебные строки таблиц request/response из shablon.md (не реальный контракт KB).
+_PLACEHOLDER_ROW_RE = re.compile(
+    r"^\|\s*(?:param[12]|result|status|timestamp)\b.*\|$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _scrub_placeholder_contract_examples(skeleton: str) -> str:
+    """Убирает учебные JSON/строки param1/result из shablon — иначе LLM копирует их вместо KB."""
+
+    def _repl_json(match: re.Match[str]) -> str:
+        block = match.group(0)
+        low = block.lower()
+        if any(marker.lower() in low for marker in _PLACEHOLDER_JSON_MARKERS):
+            return (
+                "```json\n"
+                "// ВСТАВЬ сюда JSON-пример ЦЕЛИКОМ из блока search_context (KB) выше.\n"
+                "// Не используй учебный REST-скелет (param1, result/status/timestamp, item1).\n"
+                "// Новое поле из брифа добавь в реальный пример из KB.\n"
+                "```"
+            )
+        return block
+
+    cleaned = _JSON_FENCE_RE.sub(_repl_json, skeleton)
+    cleaned = _PLACEHOLDER_ROW_RE.sub(
+        "| _(строка-заглушка удалена — возьми поля из search_context)_ |",
+        cleaned,
+    )
+    return cleaned
+
+
+def _is_integration_section(sid: str) -> bool:
+    return sid in {"4.1.1", "4.1.2"} or sid.startswith("4.1.")
+
+
 def _resolve_section_body(
     sid: str,
     section: KitSection | None,
     methodology_dir: Path | None,
     protocol: str | None,
 ) -> str:
-    """Для NFR и Use Case подставляет kit template вместо краткого skeleton из shablon."""
+    """Для NFR/Use Case — kit template; для integration — skeleton без placeholder JSON."""
     if section is None:
         return ""
 
@@ -388,7 +473,10 @@ def _resolve_section_body(
             if template and not template.startswith("[файл не найден"):
                 return _strip_kit_template_title(template)
 
-    return section.skeleton
+    body = section.skeleton
+    if _is_integration_section(sid):
+        return _scrub_placeholder_contract_examples(body)
+    return body
 
 
 def _build_document_skeleton(
@@ -435,21 +523,46 @@ def _build_document_skeleton(
     return "\n".join(lines).strip()
 
 
+# UML kit для диаграмм AS IS / TO BE (атрибут diagram_kit в shablon).
+_UML_DIAGRAM_KIT_FILES: dict[str, str] = {
+    "skill": "uml-diagram-standard-kit/skills/uml-diagram-analysis/SKILL.md",
+    "template": "uml-diagram-standard-kit/templates/activity-diagram.template.md",
+    "example": "uml-diagram-standard-kit/examples/activity-diagram-example.md",
+    "spec": "uml-diagram-standard-kit/spec-kit/activity-diagram.schema.yaml",
+    "gate": "uml-diagram-standard-kit/quality-gates/activity-diagram-review.yaml",
+}
+
+
 _SECTION_TOOL_INSTRUCTIONS: dict[str, list[str]] = {
     "write_requirements": [
         "Верни **только** блоки `## 1. Бизнес-требования` / `### 1.1. Цель` и `## 2. Ограничения и допущения`.",
         "Не пиши use case, интеграции и NFR.",
+        "Не добавляй заголовки `### 1.2` / `### 1.3` — их пишут другие kit-subagents.",
     ],
     "write_use_case_as_is": [
         "Верни **только** `### 1.2. Процесс/Сервис AS IS` с полным Use Case.",
         "Основной сценарий — `ЕСЛИ/ТО/ИНАЧЕ` и `ПЕРЕЙТИ К альтернативному сценарию Na`.",
+        "Обязательно заполни блок **Диаграмма AS IS** реальным PlantUML (Activity) "
+        "по uml-diagram-standard-kit: участники/шаги из сценария, ветвления, error paths. "
+        "Запрещено оставлять заглушку `@startuml` / `' Сгенерировать через uml-diagram-standard-kit` / пустой `@enduml`.",
     ],
     "write_use_case_to_be": [
         "Верни **только** `### 1.3. Процесс/Сервис TO BE` с полным Use Case и таблицей изменений AS IS → TO BE.",
         "Основной сценарий — `ЕСЛИ/ТО/ИНАЧЕ` и `ПЕРЕЙТИ К альтернативному сценарию Na`.",
+        "Обязательно заполни блок **Диаграмма TO BE** реальным PlantUML (Activity) "
+        "по uml-diagram-standard-kit. Запрещено оставлять пустую plantuml-заглушку.",
     ],
     "write_integration": [
         "Верни **только** раздел `## 4. Функциональные требования` (интеграция / событие из скелета).",
+        "Если в брифе/диалоге несколько обменов — сделай **отдельный подраздел 4.1.x на каждый** "
+        "(не склеивай в один урезанный контракт).",
+        "Формат request/response — из search_context (KB + контракты из диалога), не из заглушек скелета.",
+        "Таблицы полей и JSON-примеры **скопируй целиком** (все ключи верхнего уровня и вложенность). "
+        "Новое поле из брифа — единственное осознанное добавление; остальное без evidence → GAP-INT.",
+        "Запрещён короткий stub вроде `{ \"operations\": [...] }` вместо реального ответа "
+        "(если в KB/диалоге есть generalStatus / totalDeals / commissions / даты — они обязаны быть).",
+        "Запрещены заглушки `param1`, `result`/`status`/`timestamp`, `item1`.",
+        "Если в KB другой формат таблиц — сохрани формат KB, не перекладывай на учебный REST-скелет.",
     ],
     "write_data_model": [
         "Верни **только** `#### 4.2.3. Модель данных` внутри `## 4. Функциональные требования`.",
@@ -463,6 +576,31 @@ _SECTION_TOOL_INSTRUCTIONS: dict[str, list[str]] = {
         "Заполни все таблицы logging/metrics kit.",
     ],
 }
+
+
+def _append_uml_diagram_kit(
+    parts: list[str],
+    methodology_dir: Path,
+    section: KitSection,
+) -> None:
+    """Подмешивает uml-diagram-standard-kit, если у секции есть diagram_kit."""
+    diagram_kit = section.attrs.get("diagram_kit", "").strip()
+    if not diagram_kit and not _is_use_case_section(section.id):
+        return
+    parts.extend([
+        f"### Справка UML: `{diagram_kit or 'uml-diagram-standard-kit'}` (обязательно для PlantUML)",
+        "",
+        "Заполни fenced-блок ```plantuml``` в скелете: реальная Activity Diagram "
+        "(title, start/stop, шаги, if/else по альтернативам, legend). "
+        "Не копируй комментарий-заглушку «Сгенерировать через…».",
+        "",
+    ])
+    for role, relative in _UML_DIAGRAM_KIT_FILES.items():
+        limit = 4_000 if role != "skill" else 3_500
+        text = _read_file(methodology_dir, relative, limit)
+        if not text or text.startswith("[файл не найден"):
+            continue
+        parts.extend([f"**UML {role}:**", "```markdown", text, "```", ""])
 
 
 def _append_kit_reference_parts(
@@ -484,10 +622,24 @@ def _append_kit_reference_parts(
             f"### Справка: {sid} | kit `{bundle.get('kit', 'none')}`",
             "",
         ])
-        if not _is_nfr_kit_section(sid) and not _is_use_case_section(sid) and bundle.get("template"):
+        # Для integration при наличии KB: не подмешиваем учебный REST-template/example —
+        # они содержат param1/result и перебивают реальный контракт из search_context
+        # (та же ошибка, что чинили для use-case/NFR через подстановку kit-template).
+        skip_toy_contract = tool_name == "write_integration"
+        if (
+            not skip_toy_contract
+            and not _is_nfr_kit_section(sid)
+            and not _is_use_case_section(sid)
+            and bundle.get("template")
+        ):
             parts.extend(["**Template:**", "```markdown", bundle["template"], "```", ""])
         example = bundle.get("example", "").strip()
-        if example and example != "none" and not example.startswith("[файл не найден"):
+        if (
+            not skip_toy_contract
+            and example
+            and example != "none"
+            and not example.startswith("[файл не найден")
+        ):
             if len(example) > 3500:
                 example = f"{example[:3500]}\n\n...[обрезано: {len(bundle['example'])} символов всего]"
             parts.extend(["**Example (ориентир):**", "```markdown", example, "```", ""])
@@ -497,6 +649,8 @@ def _append_kit_reference_parts(
             excerpt = extract_gap_excerpt_from_skill(skill_text)
             if excerpt:
                 gap_excerpts.append(excerpt)
+        if _is_use_case_section(sid) or section.attrs.get("diagram_kit"):
+            _append_uml_diagram_kit(parts, methodology_dir, section)
 
     if tool_name:
         parts.extend([
@@ -528,6 +682,7 @@ def build_section_package(
     protocol: str | None = None,
     feature_name: str | None = None,
     context_summary: str = "",
+    search_context: str = "",
     include_document_title: bool = False,
 ) -> str:
     """Пакет для одного kit-tool: один или несколько смежных разделов shablon."""
@@ -553,19 +708,59 @@ def build_section_package(
         ["Верни **только** раздел(ы) из скелета ниже — без других частей документа."],
     )
 
+    if tool_name == "write_integration":
+        doc_skeleton = _scrub_placeholder_contract_examples(doc_skeleton)
+
     parts = [
         "# INTERNAL: пакет для ассистента (не отдавать пользователю как есть)",
         "",
         f"## Kit-tool: `{tool_name}`",
         f"## Разделы shablon: {', '.join(section_ids)}",
         "",
-        "## Описание от пользователя",
+        "## Описание от пользователя (бриф изменения)",
         feature_brief.strip(),
         "",
     ]
+    if search_context.strip():
+        kb_rules = [
+            "## Контекст из базы знаний (search_kb) — ИСТОЧНИК ИСТИНЫ",
+            "",
+            "Пиши **только** опираясь на факты ниже и бриф. Это доработка существующего "
+            "API/процесса, а не новая система с нуля.",
+            "",
+            "- Сохраняй имена обменов, методов, endpoint, сервисов, полей из KB.",
+            "- Если в KB уже есть целевой обмен — документируй **доработку существующего** "
+            "контракта (поле/параметр/поведение), а не новый метод «с нуля».",
+            "- Request/response, коды ошибок, auth — копируй/расширяй таблицы и примеры из KB; "
+            "неизвестное → GAP. Запрещено подменять их выдуманным JSON.",
+        ]
+        if tool_name == "write_integration":
+            kb_rules.extend([
+                "",
+                "### Жёстко для integration",
+                "- Таблицы «Параметры запроса/ответа» и fenced JSON ниже — **скопируй из этого блока** "
+                "(включая блок «контракты из предыдущих ответов в этом чате», если есть).",
+                "- Несколько обменов в контексте → несколько подразделов 4.1.x, у каждого свой полный контракт.",
+                "- Структура JSON (ключи верхнего уровня, вложенность) должна совпадать с KB/диалогом; "
+                "запрещён урезанный stub `{operations:[...]}`.",
+                "- Учебные `param1` / `result`+`status`+`timestamp` из скелета уже вычищены — не возвращай их.",
+            ])
+        parts.extend([
+            *kb_rules,
+            "",
+            search_context.strip(),
+            "",
+        ])
+    else:
+        parts.extend([
+            "## Контекст из базы знаний (search_kb)",
+            "",
+            "_(пусто — поиск ничего не вернул. Не выдумывай контракты; помечай GAP.)_",
+            "",
+        ])
     if context_summary.strip():
         parts.extend([
-            "## Контекст уже написанных разделов (согласуй термины, BR-id, акторов)",
+            "## Словарь согласованности (компактный; НЕ история диалога)",
             context_summary.strip(),
             "",
         ])
@@ -574,12 +769,14 @@ def build_section_package(
         "1. Верни **только один фрагмент Markdown** — заполни скелет ниже.",
         "2. **Запрещено:** преамбула «Вот документация…», «Пакет методологии», строки `> **Kit` / `> **Skill` / `> **Покрывает стандарты`, обёртка ```markdown.",
         "3. Язык — русский.",
+        "4. Приоритет фактов: **KB (search_kb)** > бриф > уже написанные разделы > kit examples "
+        "(examples — только формат, не предметная область).",
         "",
         "## GAP / DESIGN (обязательно — см. kit policy ниже)",
         "",
         *[f"- {line}" for line in gap_instructions_for_tool(tool_name)],
         "",
-        *[f"{index + 4}. {hint}" for index, hint in enumerate(tool_hints)],
+        *[f"{index + 5}. {hint}" for index, hint in enumerate(tool_hints)],
         "",
         "## Скелет раздела (заполни и верни пользователю)",
         "",
@@ -636,7 +833,9 @@ def build_write_package(
         "7. **Use Case (1.2 / 1.3):** таблица Use Case, предусловия, постусловия, основной и альтернативные сценарии. "
         "Основной сценарий — атомарные шаги с вложенными условиями в формате `ЕСЛИ … ТО … ИНАЧЕ ПЕРЕЙТИ К альтернативному сценарию Na` "
         "или `ТО сценарий продолжается с шага N`. Альтернативы — с `Возврат к шагу N` или `Сценарий завершается неуспешно`. "
-        "Не заменяй сценарии простым списком шагов без ветвлений. Диаграмма plantuml — по желанию.",
+        "Не заменяй сценарии простым списком шагов без ветвлений. "
+        "Диаграмма plantuml (Activity по uml-diagram-standard-kit) — **обязательна**: "
+        "заполни `@startuml…@enduml`, не оставляй заглушку «Сгенерировать через…».",
         "8. **`## 5. Нефункциональные требования`:** каждый подраздел из скелета (5.1, 5.2, 5.3.1, 5.3.2, 5.4, 5.5) "
         "заполняй **полностью по kit template** — все таблицы, без сокращений до маркированных списков. "
         "Логирование (`5.3.1`) и мониторинг (`5.3.2`) — только внутри блока `## 5`, не выноси отдельно.",

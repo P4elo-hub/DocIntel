@@ -1,3 +1,4 @@
+import json
 import re
 from collections.abc import AsyncIterator
 from uuid import UUID
@@ -21,6 +22,7 @@ from app.chat.repository import ChatRepository, SystemPromptRepository
 from app.chat.tokens import count_tokens, fit_to_budget
 from app.moderation.domain import ModerationResult
 from app.moderation.service import ModerationService
+from app.services.cache import agent_query_cache_key
 
 logger = structlog.get_logger("chat-service")
 
@@ -59,6 +61,8 @@ class ChatService:
         rag_service=None,
         rag_enabled: bool = False,
         agent_enabled: bool = False,
+        cache=None,
+        cache_ttl_seconds: int = 3600,
     ) -> None:
         self.repository = repository
         self.llm = llm_client
@@ -73,6 +77,8 @@ class ChatService:
         self.rag_enabled = rag_enabled
         # True → Telegram/web идут через LangGraph (search_agent / write_agent).
         self.agent_enabled = agent_enabled
+        self.cache = cache
+        self.cache_ttl_seconds = cache_ttl_seconds
 
     async def create_chat(
         self,
@@ -221,41 +227,111 @@ class ChatService:
         *,
         chat_id: UUID,
         query: str,
-        intent: str,
         prompt_id,
+        prior_history: list | None = None,
     ) -> AsyncIterator[dict]:
-        """Ответ через LangGraph: search_agent и при необходимости write_agent."""
+        """Ответ через LangGraph.
+
+        Историю чата передаём в classify_agent как кандидата; он сам решает
+        ``history`` (пробросить + condense) или ``fresh`` (обнулить).
+        Кэш exact-match — только для fresh-запросов без prior (иначе follow-up
+        зависит от истории).
+        """
+        from app.chat.rag_query import recent_dialog_summary_for_agents
         from app.services.agent_graph import run_docintel_pipeline
 
-        logger.info(
-            "chat_agent_pipeline_start",
-            chat_id=str(chat_id),
-            intent=intent,
-            query=query[:160],
-        )
-        try:
-            result = await run_docintel_pipeline(
-                query,
-                thread_id=f"chat-{chat_id}",
-            )
-        except Exception as exc:
-            logger.exception("chat_agent_pipeline_failed", chat_id=str(chat_id))
-            yield {
-                "type": "error",
-                "code": "agent_pipeline_failed",
-                "message": f"Агенты DocIntel не ответили: {exc}",
-            }
-            return
+        prior = list(prior_history or [])
+        # Полные JSON/таблицы из прошлых answer — иначе write_integration их не видит.
+        chat_history = recent_dialog_summary_for_agents(prior) if prior else ""
 
-        assistant_text = (result.get("answer") or "").strip()
-        agents = result.get("agents_called") or []
-        logger.info(
-            "chat_agent_pipeline_done",
-            chat_id=str(chat_id),
-            intent=result.get("intent"),
-            agents=agents,
-            chars=len(assistant_text),
-        )
+        # При наличии истории не читаем кэш: ответ зависит от use_history.
+        cache_key = agent_query_cache_key(query)
+        cached_hit = False
+        assistant_text = ""
+        agents: list = []
+        intent = None
+
+        if self.cache is not None and not prior:
+            try:
+                blob = await self.cache.get(cache_key)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("agent_cache_get_failed", error=str(exc))
+                blob = None
+            if blob:
+                try:
+                    payload = json.loads(blob)
+                    assistant_text = (payload.get("answer") or "").strip()
+                    agents = payload.get("agents") or ["cache"]
+                    intent = payload.get("intent")
+                    cached_hit = bool(assistant_text)
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    logger.warning("agent_cache_corrupt", error=str(exc))
+                    cached_hit = False
+
+        if cached_hit:
+            logger.info(
+                "chat_agent_pipeline_cache_hit",
+                chat_id=str(chat_id),
+                intent=intent,
+                agents=agents,
+                chars=len(assistant_text),
+                query=query[:160],
+            )
+        else:
+            logger.info(
+                "chat_agent_pipeline_start",
+                chat_id=str(chat_id),
+                query=query[:160],
+                history_candidate_chars=len(chat_history),
+            )
+            try:
+                result = await run_docintel_pipeline(
+                    query,
+                    chat_history=chat_history,
+                    original_user_message=query,
+                    thread_id=f"chat-{chat_id}",
+                )
+            except Exception as exc:
+                logger.exception("chat_agent_pipeline_failed", chat_id=str(chat_id))
+                yield {
+                    "type": "error",
+                    "code": "agent_pipeline_failed",
+                    "message": f"Агенты DocIntel не ответили: {exc}",
+                }
+                return
+
+            assistant_text = (result.get("answer") or "").strip()
+            agents = result.get("agents_called") or []
+            intent = result.get("intent")
+            use_history = bool(result.get("use_history"))
+            effective = (result.get("user_request") or query).strip()
+            logger.info(
+                "chat_agent_pipeline_done",
+                chat_id=str(chat_id),
+                intent=intent,
+                use_history=use_history,
+                agents=agents,
+                chars=len(assistant_text),
+                cached=False,
+            )
+            # Кэшируем только самостоятельные (fresh) ответы.
+            if assistant_text and self.cache is not None and not use_history:
+                try:
+                    await self.cache.setex(
+                        agent_query_cache_key(effective),
+                        self.cache_ttl_seconds,
+                        json.dumps(
+                            {
+                                "answer": assistant_text,
+                                "intent": intent,
+                                "agents": agents,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("agent_cache_set_failed", error=str(exc))
+
         if not assistant_text:
             yield {
                 "type": "error",
@@ -322,23 +398,21 @@ class ChatService:
         await self.repository.append_message(chat_id, user_message)
 
         history = await self.repository.list_messages(chat_id, limit=self.context_window)
+        # Текущее user-сообщение уже в history — в prior для агентов не включаем.
+        prior_history = history[:-1]
 
-        # LangGraph DocIntel: вопрос → search_agent; «напиши документацию» →
-        # search_agent → write_agent. Telegram бьёт в этот же /chats путь.
+        # LangGraph DocIntel: classify_agent → search | write→validate | answer→validate
+        # с chat_history / condense (как в pre-agent RAG), иначе follow-up ломается.
         current_query = extract_rag_query(user_content, media_refs)
         if self.agent_enabled and current_query.strip():
-            from app.services.agent_graph import detect_intent
-
-            intent = detect_intent(current_query)
-            if intent in ("search", "write"):
-                async for event in self._send_via_agents(
-                    chat_id=chat_id,
-                    query=current_query,
-                    intent=intent,
-                    prompt_id=prompt_id,
-                ):
-                    yield event
-                return
+            async for event in self._send_via_agents(
+                chat_id=chat_id,
+                query=current_query,
+                prompt_id=prompt_id,
+                prior_history=prior_history,
+            ):
+                yield event
+            return
 
         messages = await build_sliding_context(
             self.repository,

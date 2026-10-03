@@ -3,8 +3,8 @@
 AI-ассистент для системного аналитика: поиск по базе знаний и генерация документации фич.
 FastAPI-сервис курса «ИИ-разработчик»: generic LLM-чат (`/chat`), DocIntel tool calling (`/features/*`),
 **серверная история чатов и Telegram-бот**, **RAG (LlamaIndex + Qdrant)**, **LangGraph-агенты**
-(`search_agent` → `write_agent` в Telegram при `CHAT_AGENT_ENABLED=true`), observability (Phoenix),
-защитный слой (Б3.8) и eval/garak.
+(`classify` → `search` / `write` / `answer` → `validate` в Telegram при `CHAT_AGENT_ENABLED=true`),
+observability (Phoenix), защитный слой (Б3.8) и eval/garak.
 
 Swagger UI — http://localhost:8000/docs  
 Шпаргалка портов — [docs/services.md](docs/services.md)
@@ -61,7 +61,7 @@ docker compose up --build
 |------|------------|
 | **Generic chat** | `POST /chat` — прямой вызов OpenAI, кеш Redis при `temperature=0`, retry, streaming/batch |
 | **Chat history + bot** | `POST /chats/*` — история в Postgres, multipart/SSE, модерация, rate-limit; **`bot/`** — Telegram-клиент |
-| **LangGraph-агенты** | `search_agent` (`search_kb`) → при «напиши документацию» `write_agent` (`write_feature_doc`); оркестратор `docintel_graph` в `app/services/agent_graph.py`. В Telegram/web при `CHAT_AGENT_ENABLED=true` |
+| **LangGraph-агенты** | `classify_agent` выбирает сценарий и историю → `search_agent` → (`write_agent` kit-subagents \| `answer_agent`) → `validate_agent` (свежий RAG). Оркестратор `docintel_graph` в `app/services/agent_graph.py`. Telegram/web при `CHAT_AGENT_ENABLED=true` |
 | **DocIntel tools API** | `POST /features/chat` — tool calling; `POST /features/generate` — sectioned-документация (классический путь без графа) |
 | **RAG** | `POST /rag/query` — ответ по базе с цитатами; индексация в Qdrant. В чате — fallback, если агенты выключены или intent=`chat` (светская беседа) |
 | **Security** | Валидация входа, canary, фильтр выхода, PII в логах, rate limit — на `/chat` и `/features/chat` |
@@ -80,9 +80,9 @@ app/
 ├── moderation/, ratelimit/    # каскад модерации, лимит сообщений (Postgres)
 ├── routers/                   # /chat, /features/*, /rag, /documents, health, models
 ├── services/
-│   ├── agent_graph.py         # LangGraph: search_agent, write_agent, docintel_graph
+│   ├── agent_graph.py         # LangGraph: classify/search/write/answer/validate
 │   ├── rag.py, ingestion.py   # RAG + индексация корпуса
-│   └── docintel/, …           # tool calling DocIntel
+│   └── docintel/              # orchestrator (kits), answer_agent, validator, client
 └── observability/             # structlog, PII, tracing → Phoenix
 
 bot/                           # Telegram: long polling + /notify :9000
@@ -154,23 +154,78 @@ docker compose up --build
 
 Garak и eval в образ **не входят** — это dev/host-инструменты; в контейнер копируется только `app/` и `feature-methodology-project/`.
 
-## LangGraph-агенты (Telegram / `/chats`)
+## Telegram-чат и LangGraph-агенты
 
-При **`CHAT_AGENT_ENABLED=true`** (по умолчанию) сообщения из Telegram идут так:
+Путь сообщения:
 
 ```text
-intent_router
-  ├─ вопрос по документации → search_agent  (tool: search_kb)
-  ├─ «напиши / задокументируй фичу» → search_agent → write_agent  (tool: write_feature_doc)
-  └─ «привет» / светская беседа → короткий ответ (без агентов; дальше может сработать RAG)
+Telegram → bot/ (long polling)
+  → POST /chats/{id}/messages (SSE)
+  → ChatService._send_via_agents   # при CHAT_AGENT_ENABLED=true
+  → run_docintel_pipeline / docintel_graph
+  → ответ боту (длинные документы режутся на несколько сообщений Telegram)
 ```
+
+При **`CHAT_AGENT_ENABLED=true`** (по умолчанию) оркестратор такой:
+
+```text
+classify_agent
+  ├─ chat / reject  → короткий ответ, END
+  └─ search | write | answer
+        → search_agent  (tool: search_kb, контекст из RAG/docs)
+              ├─ search  → END (выдача найденного)
+              ├─ write   → write_agent (kit-subagents по секциям) → validate_agent → END
+              └─ answer  → answer_agent (ответ по KB)           → validate_agent → END
+```
+
+### Сценарии
+
+| Intent | Когда | Цепочка |
+|--------|--------|---------|
+| **search** | «найди / покажи источник» без развёрнутого ответа | `classify` → `search` |
+| **write** | «напиши / задокументируй фичу», бриф, «ещё раз» при write в истории | `classify` → `search` → `write` → `validate` |
+| **answer** | пример request/response, пояснение по обмену/API | `classify` → `search` → `answer` → `validate` |
+| **chat** | приветствие / благодарность | короткий ответ DocIntel |
+| **reject** | запрос не про документацию продукта | отказ (off-topic) |
+
+`classify_agent` также решает **history / fresh**:
+- **history** — реплика продолжает диалог («ещё раз», «в тот формат», ссылка на прошлую задачу): в пайплайн уходит история чата, запрос при необходимости сворачивается (condense);
+- **fresh** — новая самодостаточная тема: история не пробрасывается.
+
+### Роли агентов
+
+| Агент | Что делает |
+|-------|------------|
+| `classify_agent` | Intent + history/fresh; condense follow-up; chat/reject сразу |
+| `search_agent` | Несколько вызовов `search_kb` по обменам/API; полный KB-контекст (не краткое резюме) |
+| `write_agent` | Оркестратор kit-subagents (`SectionOrchestrator`): цель, AS IS / TO BE, интеграции, NFR и т.д. — каждый kit отдельно по шаблону |
+| `answer_agent` | Развёрнутый ответ по `search_context` (+ история), без полного документа фичи |
+| `validate_agent` | Независимый review **всего** draft: сам ходит в RAG, сверяет цель/use case/контракты/NFR, правит по аналитике |
+
+Write **не** зависит от одного гигантского контекста одной LLM-сессии: kits вызываются по очереди с общим `search_context`. Validate **не** опирается на тот же контекст write — собирает свежие фрагменты RAG.
+
+### Примеры в Telegram
+
+| Сообщение | Сценарий |
+|-----------|----------|
+| «Найди документ GetLinkedEvents» | search |
+| «Приведи пример ответа SEND_OPERATIONS» | answer → validate |
+| «Сделай документацию: добавить yield в GetLinkedEvents» | write → validate |
+| «Выполни эту задачу ещё раз» (после write-брифа) | write + history → validate |
+| «Привет» | chat |
+| «Какая погода?» | reject |
+
+### Где код и схемы
 
 | Компонент | Где |
 |-----------|-----|
-| Оркестратор + два агента | `app/services/agent_graph.py` (`docintel_graph`, `run_docintel_pipeline`) |
+| Оркестратор | `app/services/agent_graph.py` (`docintel_graph`, `run_docintel_pipeline`) |
+| Kits / секции | `app/services/docintel/orchestrator.py`, `app/tools/feature_sections/` |
+| Answer / validate | `app/services/docintel/answer_agent.py`, `validator.py` |
 | Врезка в чат | `app/chat/service.py` (`_send_via_agents`) |
+| Длинные ответы в TG | `bot/services/streaming.py` (chunking ≤ 4096) |
 | Схемы | [docs/agent-graph-diagrams.md](docs/agent-graph-diagrams.md), [docs/agent-graph.png](docs/agent-graph.png) |
-| Отчёт Б6.3 + бенч | [docs/agent-graph-report.md](docs/agent-graph-report.md), `scripts/bench_agents.py` |
+| Отчёт Б6.3 + бенч ReAct | [docs/agent-graph-report.md](docs/agent-graph-report.md), `scripts/bench_agents.py` |
 
 ```bash
 # Перерисовать схемы
@@ -184,16 +239,17 @@ print(asyncio.run(run_docintel_pipeline('Как работает импорт и
 "
 ```
 
-Классический DocIntel tool-calling без графа по-прежнему на `POST /features/chat` и `POST /features/generate`.
+Классический DocIntel tool-calling **без** этого графа по-прежнему на `POST /features/chat` и `POST /features/generate`.
 
 ## RAG (база знаний)
 
 RAG на **LlamaIndex + Qdrant**: корпус markdown индексируется в Qdrant, ответ — по
 найденному контексту с цитатами `[n]` (`POST /rag/query`).
 
-В чате/боте RAG (Вариант C, `CHAT_RAG_ENABLED=true`) используется как **запасной путь**:
-когда агенты выключены (`CHAT_AGENT_ENABLED=false`) или intent = светская беседа.
-Голосовые сообщения по-прежнему транскрибируются (Whisper) до текста запроса.
+В чате/боте RAG (Вариант C, `CHAT_RAG_ENABLED=true`) — **запасной путь**, когда агенты
+выключены (`CHAT_AGENT_ENABLED=false`). При включённых агентах поиск идёт через
+`search_agent` / `validate_agent` (тот же корпус Qdrant + docs). Голосовые сообщения
+транскрибируются (Whisper) до текста запроса.
 
 **Пайплайн:** `SimpleDirectoryReader → header-aware чанкинг → text-embedding-3-small
 → Qdrant → dense-поиск (top_k) → (опц. reranker) → LLM с цитатами`. Порог
@@ -443,8 +499,8 @@ curl -s http://localhost:8000/models
 | `LLM__DEFAULT_MODEL` | `gpt-4o-mini` | Модель по умолчанию |
 | `REDIS_URL` | `redis://localhost:6379/0` | Кеш + rate limit |
 | `QDRANT_URL` | `http://localhost:6333` | Векторное хранилище RAG (в Docker — `http://qdrant:6333`) |
-| `CHAT_AGENT_ENABLED` | `true` | Telegram/web → LangGraph `search_agent` / `write_agent` |
-| `CHAT_RAG_ENABLED` | `true` | Fallback RAG в чате (если агенты выкл. / chitchat); см. `docs/rag.md` |
+| `CHAT_AGENT_ENABLED` | `true` | Telegram/web → LangGraph classify/search/write/answer/validate |
+| `CHAT_RAG_ENABLED` | `true` | Fallback RAG в чате, если агенты выкл.; см. `docs/rag.md` |
 | `SECURITY_ENABLED` | `true` | Защитный слой |
 | `RATE_LIMIT_PER_MIN` | `30` | Rate limit (0 = выкл.) |
 | `PHOENIX_COLLECTOR_ENDPOINT` | — | OTLP traces → Phoenix |

@@ -20,16 +20,22 @@ _TOOL_GAP_POLICIES: dict[str, list[str]] = {
         "Kit: **use-case-standard-kit** | для неизвестных шагов/правил: `GAP-UC-001` (или `GAP-REQ-NNN`, если gap в бизнес-правиле).",
         "Не выдумывай акторов, таймауты, коды ошибок, лимиты — помечай GAP в шаге сценария или в таблице Use Case.",
         "Если альтернативный сценарий не следует из brief — опиши минимально и добавь GAP на детали ветвления.",
+        "Диаграмма PlantUML обязательна (uml-diagram-standard-kit / Activity). Неизвестные участники на схеме → `GAP-UML-NNN` / `ASM-UML-NNN`, не пустой `@enduml`.",
     ],
     "write_use_case_to_be": [
         "Kit: **use-case-standard-kit** | `GAP-UC-001`, … для неизвестных TO BE деталей.",
         "Таблица «Изменения относительно AS IS»: неизвестный тип изменения → GAP в ячейке.",
         "Kafka/outbox/retry: только то, что в brief; остальное — GAP в шагах или Gaps и допущения.",
+        "Диаграмма PlantUML TO BE обязательна (Activity). Пустая заглушка plantuml запрещена; gaps — `GAP-UML-NNN`.",
     ],
     "write_integration": [
         "Kit: **integration-standard-kit** | префикс: `GAP-INT-001`, …",
+        "Request/response JSON и таблицы полей — только из search_context (KB + контракты диалога). "
+        "Заглушки шаблона и урезанные stub (`param1`, выдуманный `result`/`status`, "
+        "`{operations:[...]}` вместо полного ответа) запрещены.",
+        "Несколько обменов в brief/диалоге → отдельный подраздел на каждый обмен.",
         "Поля контракта без evidence (auth, rate limit, timeout, retry, версия API, optional headers) → `GAP-INT-NNN` в таблице.",
-        "Поля события в brief заданы явно — заполни; остальные атрибуты схемы → GAP-INT, не placeholder «…».",
+        "Новое поле из brief добавь в реальный контракт KB; остальные атрибуты схемы без evidence → GAP-INT.",
         "В конце раздела 4.x — **Gaps и допущения** для всех GAP-INT из таблиц.",
     ],
     "write_data_model": [

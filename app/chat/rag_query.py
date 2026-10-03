@@ -20,8 +20,14 @@ _CLARIFICATION_RE = re.compile(
 )
 
 _DIALOG_REFERENCE_RE = re.compile(
-    r"эти(?:х|\s+два)|прошл|ранее|ты\s+(?:присл|отправ|показ)|"
-    r"последн(?:ий|ие)\s+(?:json|джейсон|сообщ)|из\s+чего|"
+    r"эти(?:х|\s+два)|прошл|ранее|"
+    r"ты\s+(?:присл|отправ|показ|дал|прин|привел|привёл|написал)|"
+    r"данн(?:ого|ой|ый|ую|ое|ом)|текущ\w*|предыдущ\w*|"
+    r"в\s+данном\s+(?:обмене|формате|примере|ответе)|"
+    r"в\s+этом\s+(?:обмене|формате|примере|ответе)|"
+    r"насколько\s+я\s+помню|"
+    r"в\s+тот\s+формат|в\s+этот\s+формат|трансформ|"
+    r"последн(?:ий|ие)\s+(?:json|джейсон|сообщ|пример|операц)|из\s+чего|"
     r"history\s*ops|screen\s*api|композит|бph|bph",
     re.IGNORECASE,
 )
@@ -80,6 +86,8 @@ def needs_context_expansion(current: str) -> bool:
         return True
     if _FOLLOWUP_HINT_RE.search(text):
         return True
+    if _DIALOG_REFERENCE_RE.search(text):
+        return True
     return len(text) < SHORT_FOLLOWUP_MAX_LEN
 
 
@@ -104,11 +112,15 @@ def recent_dialog_summary(
     *,
     limit: int = 4,
     roles: set[str] | None = None,
+    user_max_chars: int = 400,
+    assistant_max_chars: int = 400,
 ) -> str:
-    """Краткий контекст последних реплик для RAG-поиска.
+    """Краткий контекст последних реплик для RAG-поиска / агентов.
 
     roles — если задан, берём только эти роли (напр. {"user"} при явной правке,
     чтобы ошибочный ответ ассистента не отравлял condense/поиск).
+    Для agent write/answer поднимай assistant_max_chars — иначе JSON-контракты
+    из прошлых ответов обрезаются и kits выдумывают короткий stub.
     """
     lines: list[str] = []
     # Идём с конца, чтобы «последние N подходящих» — именно свежие, а не первые N.
@@ -119,11 +131,22 @@ def recent_dialog_summary(
         if not text:
             continue
         role = "Пользователь" if msg.role == "user" else "Ассистент"
-        lines.append(f"{role}: {text[:400]}")
+        cap = assistant_max_chars if msg.role == "assistant" else user_max_chars
+        lines.append(f"{role}: {text[:cap]}")
         if len(lines) >= limit:
             break
     lines.reverse()
     return "\n".join(lines)
+
+
+def recent_dialog_summary_for_agents(history: list[ChatMessage]) -> str:
+    """История для LangGraph: сохраняем полные контракты из прошлых ответов."""
+    return recent_dialog_summary(
+        history,
+        limit=8,
+        user_max_chars=1_200,
+        assistant_max_chars=8_000,
+    )
 
 
 CONDENSE_SYSTEM_PROMPT = (

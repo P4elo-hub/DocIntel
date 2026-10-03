@@ -25,6 +25,7 @@ class FeatureSectionsHandler:
         protocol: str | None = None,
         feature_name: str | None = None,
         context_summary: str = "",
+        search_context: str = "",
         include_document_title: bool = False,
     ) -> str:
         feature_brief = feature_brief.strip()
@@ -43,5 +44,6 @@ class FeatureSectionsHandler:
             protocol=protocol,
             feature_name=feature_name,
             context_summary=context_summary,
+            search_context=search_context,
             include_document_title=include_document_title,
         )
