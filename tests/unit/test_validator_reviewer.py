@@ -21,6 +21,14 @@ def test_system_prompts_are_reviewer_not_author() -> None:
     assert "БЕЗ изменений" in validator._SYSTEM_ANSWER
 
 
+def test_answer_checker_rejects_assembled_example() -> None:
+    text = validator._SYSTEM_ANSWER
+    assert "честный отказ" in text
+    assert "Собранный по маппингу" in text
+    src = inspect.getsource(validator.validate_against_kb)
+    assert "не собранный JSON" in src
+
+
 def test_collect_evidence_prefers_pipeline(monkeypatch) -> None:
     import asyncio
 

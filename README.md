@@ -161,10 +161,18 @@ Garak и eval в образ **не входят** — это dev/host-инстр
 ```text
 Telegram → bot/ (long polling)
   → POST /chats/{id}/messages (SSE)
+  → prompt injection guard + moderation
   → ChatService._send_via_agents   # при CHAT_AGENT_ENABLED=true
   → run_docintel_pipeline / docintel_graph
   → ответ боту (длинные документы режутся на несколько сообщений Telegram)
 ```
+
+Перед запуском агентов Telegram/web-вход проходит `validate_input`: блокируются
+`ignore previous instructions`, DAN/developer-mode паттерны, длинный ввод,
+non-printable и base64-like payload. После этого срабатывает moderation
+(custom blocklist + OpenAI Moderation). Для voice/media тот же guard повторно
+проверяет текст после `extract_rag_query(...)`, чтобы транскрипт не ушёл в
+LangGraph без проверки.
 
 При **`CHAT_AGENT_ENABLED=true`** (по умолчанию) оркестратор такой:
 
@@ -268,8 +276,9 @@ RAG на **LlamaIndex + Qdrant**: корпус markdown индексируетс
 
 - `data/rag-block-03/` — учебный sample-корпус (10 документов), едет в репозиторий;
 - `data/my-kb/` — личная база знаний (SIHIST «История операций»), **локальная**,
-  в git не коммитится (`.gitignore`). Внутри `_actual/` — курируемые «источники
-  правды» (глоссарий, интеграции, лента), имеющие приоритет над отдельными фичами.
+  в git не коммитится (`.gitignore`). В индекс идёт `SIHIST/09-Current-State`;
+  сводки `_actual/` не индексируются, из выгрузки БД берутся схема и описания
+  таблиц без построчного заполнения.
 
 ### Эндпоинты
 
@@ -314,13 +323,21 @@ reranker/hybrid, сравнение LlamaIndex vs bare-metal.
 
 ## Защитный слой (Б3.8)
 
-Включён на **`POST /chat`**, **`POST /features/chat`** и их stream-вариантах (не на `/features/generate`).
+Включён на **`POST /chat`**, **`POST /features/chat`**, их stream-вариантах и
+на Telegram/web endpoint **`POST /chats/{id}/messages`** (не на
+`/features/generate`).
 
 ```
+REST /chat:
 Запрос → rate_limit → validate_input → LLM (+ canary в system) → filter_output → ответ
               ↓              ↓                                        ↓
             429            400                                   502 / маскирование PII
          (нет content)  (нет content — garak считает атаку закрытой)
+
+Telegram/web /chats/{id}/messages:
+Сообщение → validate_input → moderation → history → LangGraph agents → SSE-ответ
+                    ↓             ↓
+                  400           403
 ```
 
 | Модуль | Что делает |

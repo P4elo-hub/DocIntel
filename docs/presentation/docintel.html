@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DocIntel — обоснование</title>
+<style>
+  :root {
+    --bg: #f4f0e8;
+    --ink: #1c1915;
+    --muted: #5c564c;
+    --line: #d9d1c3;
+    --card: #fffdf8;
+    --accent: #9a3412;
+    --accent-soft: #f3e6dc;
+    --ok: #1f6b45;
+    --warn: #8a5a12;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: #2a2622;
+    color: var(--ink);
+    font-family: "Iowan Old Style", Palatino, "Palatino Linotype", "Times New Roman", serif;
+  }
+  #stage {
+    width: 1920px; height: 1080px;
+    position: absolute; left: 50%; top: 50%;
+    transform-origin: center center;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  .slide {
+    display: none;
+    width: 1920px; height: 1080px;
+    padding: 72px 88px 100px;
+    position: relative;
+  }
+  .slide.active { display: flex; flex-direction: column; }
+  .kicker {
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 18px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--accent);
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-weight: 500; font-size: 76px; line-height: 1.05;
+    margin: 0 0 28px; letter-spacing: -0.02em;
+  }
+  h2 {
+    font-weight: 500; font-size: 54px; line-height: 1.08;
+    margin: 0 0 28px; letter-spacing: -0.02em;
+  }
+  .lead { font-size: 32px; line-height: 1.35; color: var(--muted); max-width: 1400px; margin: 0; }
+  .grid { display: grid; gap: 22px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 26px 28px;
+  }
+  .card h3 {
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 16px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 12px; font-weight: 600;
+  }
+  .card p, .card li { font-size: 26px; line-height: 1.35; margin: 0; }
+.nowrap { white-space: nowrap; }
+  ul { margin: 0; padding-left: 1.15em; }
+  li { margin: 8px 0; }
+  .meta {
+    margin-top: auto;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 22px; color: var(--muted);
+  }
+  .foot {
+    position: absolute; left: 88px; right: 88px; bottom: 36px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 18px; color: var(--muted);
+  }
+  .bar { height: 4px; background: var(--line); width: 280px; border-radius: 4px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 26px; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 16px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600;
+  }
+  .sheet {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .sheet table { font-size: 28px; }
+  .sheet th {
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 18px 28px;
+  }
+  .sheet td { padding: 22px 28px; line-height: 1.35; }
+  .sheet tr:last-child td { border-bottom: none; }
+  .sheet tbody tr:nth-child(even) td { background: #faf7f2; }
+  .sheet td:first-child {
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-weight: 600;
+    width: 38%;
+    color: var(--ink);
+  }
+  .flow {
+    display: flex; align-items: stretch; gap: 12px; flex-wrap: wrap;
+  }
+  .node {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px 18px; min-width: 180px;
+    font-size: 22px; line-height: 1.25;
+  }
+  .node b { display: block; font-size: 24px; margin-bottom: 4px; }
+  .arrow { align-self: center; color: var(--accent); font-size: 32px; }
+  .title-slide { justify-content: flex-end; padding-bottom: 120px; }
+  .title-slide h1 { font-size: 84px; max-width: 1500px; }
+  .pill {
+    display: inline-block; background: var(--accent-soft); color: var(--accent);
+    border-radius: 999px; padding: 6px 14px; margin: 0 8px 8px 0;
+    font-family: "Avenir Next", "Segoe UI", sans-serif; font-size: 20px;
+  }
+  .quote {
+    font-size: 28px; line-height: 1.3; margin: 0 0 22px;
+  }
+  .miss {
+    border-top: 1px solid var(--line);
+    padding-top: 14px; margin-top: 14px;
+  }
+  .miss b {
+    display: block;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; margin-bottom: 6px;
+  }
+  .miss p { font-size: 22px; line-height: 1.35; margin: 0; }
+  .card p.need {
+    margin-top: auto; padding-top: 18px;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 20px; line-height: 1.35; color: var(--accent);
+  }
+  #notes {
+    display: none; position: fixed; left: 0; right: 0; bottom: 0;
+    background: #1c1915; color: #f4f0e8;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 18px; line-height: 1.4; padding: 16px 28px 18px;
+    z-index: 5; max-height: 28vh; overflow: auto;
+  }
+  #notes.on { display: block; }
+  #help {
+    position: fixed; top: 12px; right: 16px; z-index: 6;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 13px; color: #cfc6b8;
+  }
+</style>
+</head>
+<body>
+<div id="help">← → листать · N заметки докладчика</div>
+<div id="stage">
+
+<section class="slide title-slide active" data-note="30 секунд. Назвать продукт, пользователя и обещание: ответы и документы только по базе знаний «Истории операций», с явным отказом, если источника нет.">
+  <p class="kicker">ИИ-разработчик: от API до агентов</p>
+  <h1>DocIntel — ассистент системного аналитика</h1>
+  <p class="lead">Поиск по базе знаний и черновик документации фичи. Ответ опирается на источники, а не на память модели.</p>
+  <p class="meta">Иван Пчелов· 8 минут</p>
+  <div class="foot"><span>01 / 13</span><div class="bar"><span style="width:8%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Пользователь — аналитик, которому нужны три вещи: найти страницу, показать контракт и собрать документ фичи по шаблону. Светская беседа и посторонние вопросы закрываются отдельно, чтобы не тратить поиск.">
+  <p class="kicker">Задача и пользователь</p>
+  <h2>Один пользователь, пять сценариев</h2>
+  <div class="grid g2" style="flex:1">
+    <div class="card">
+      <h3>Кто</h3>
+      <p>Системный аналитик, который работает с проектной и технической документацией. Канал — Telegram-бот и веб-чат.</p>
+    </div>
+    <div class="card">
+      <h3>Что закрывает система</h3>
+      <ul>
+        <li><b>search</b> — найти документ обмена или API</li>
+        <li><b>answer</b> — пример запроса и ответа по контракту</li>
+        <li><b>write</b> — черновик фичи по секциям шаблона</li>
+        <li><b>chat / reject</b> — приветствие или отказ если вопрос вне темы </li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span>02 / 13</span><div class="bar"><span style="width:15%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Главная мысль слайда: ИИ здесь нужен не «для красоты», а потому что задача не сводится к поиску страницы. Нужно понять вопрос аналитика, собрать ответ из нескольких фрагментов и удержать границы базы знаний, чтобы не выдумывать контракт.">
+  <p class="kicker">Почему здесь нужен ИИ</p>
+  <h2>Это не поиск страницы, а работа с документацией</h2>
+  <div class="grid g3" style="flex:1; align-items:stretch; grid-template-rows:1fr">
+    <div class="card" style="display:flex; flex-direction:column">
+      <h3>Понять вопрос</h3>
+      <p class="quote">Аналитик спрашивает человеческим языком, а в документах живут названия API, поля и внутренние термины.</p>
+      <div class="miss">
+        <b>Без ИИ</b>
+        <p>Поиск требует угадать точные слова из документа: имя обмена, поле JSON, системное сокращение.</p>
+      </div>
+      <div class="miss">
+        <b>В DocIntel</b>
+        <p>Запрос переводится в смысловой поиск: модель связывает пользовательскую формулировку с нужным разделом базы знаний.</p>
+      </div>
+      <p class="need">ИИ нужен как переводчик между вопросом и языком документации.</p>
+    </div>
+    <div class="card" style="display:flex; flex-direction:column">
+      <h3>Собрать ответ</h3>
+      <p class="quote">Полезный ответ часто лежит не в одном абзаце: назначение, контракт, пример и ограничения разнесены по разделам.</p>
+      <div class="miss">
+        <b>Без ИИ</b>
+        <p>Пользователь получает список ссылок и сам сравнивает несколько страниц, таблиц и примеров.</p>
+      </div>
+      <div class="miss">
+        <b>В DocIntel</b>
+        <p>RAG достаёт фрагменты, а агент собирает из них ответ или черновик фичи по шаблону.</p>
+      </div>
+      <p class="need">ИИ нужен как сборщик связного ответа из найденных источников.</p>
+    </div>
+    <div class="card" style="display:flex; flex-direction:column">
+      <h3>Удержать границы</h3>
+      <p class="quote">Если в базе нет факта, ассистент должен отказаться или показать пробел, а не придумать контракт.</p>
+      <div class="miss">
+        <b>Без ИИ</b>
+        <p>Обычный поиск не различает: найден точный источник, похожий документ или вообще соседняя тема.</p>
+      </div>
+      <div class="miss">
+        <b>В DocIntel</b>
+        <p>Классификатор отделяет рабочие запросы от off-topic, ответ строится с цитатами, validate-агент перепроверяет по свежему поиску.</p>
+      </div>
+      <p class="need">ИИ нужен как контролёр: отвечать только там, где есть опора на базу.</p>
+    </div>
+  </div>
+  <div class="foot"><span>03 / 13</span><div class="bar"><span style="width:23%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Слайд отвечает на вопрос, откуда взята база знаний. В индекс попадает рабочая документация, по которой реально отвечает аналитик: описания функций, API, сценарии, ограничения и словари. Архив, черновики и сырые выгрузки не смешиваются с основной базой, чтобы ассистент не ссылался на устаревшие или шумные источники.">
+  <p class="kicker">База знаний</p>
+  <h2>В индекс попадает рабочая документация</h2>
+  <div class="grid g3">
+    <div class="card">
+      <h3>Выбрано</h3>
+      <p>Основной корпус — актуальные markdown-документы проекта: описание функций, сценарии, API-контракты, ограничения, словарь терминов и справочная схема данных.</p>
+    </div>
+    <div class="card">
+      <h3>Рассматривалось</h3>
+      <p>Индексировать всё подряд: архивные страницы, черновики, автосводки, полные выгрузки БД и учебный sample-корпус.</p>
+    </div>
+    <div class="card">
+      <h3>Почему отказ</h3>
+      <p>Шумные источники ухудшают ответы: архив даёт устаревшие правила, черновики дублируют факты, сырые таблицы раздувают индекс без бизнес-смысла. Учебные данные хранятся отдельно, чтобы не смешивать оценку и рабочую базу.</p>
+    </div>
+  </div>
+  <div class="foot"><span>04 / 13</span><div class="bar"><span style="width:31%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Пройти путь запроса слева направо. Новый слой validate_input стоит до агентов: prompt injection, DAN/base64 и слишком длинный ввод режутся до LangGraph. Подчеркнуть: validate-агент ходит в поиск заново и не верит контексту write. Postgres — только история, Qdrant — только знания.">
+  <p class="kicker">Архитектура</p>
+  <h2>Запрос идёт по ролям, не одним вызовом</h2>
+  <div class="flow" style="margin-bottom:28px">
+    <div class="node"><b>Telegram</b>бот, long polling</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>Chat API</b>история в Postgres</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>valid input</b>prompt injection guard</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>classify</b>intent и history/fresh</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>search</b>tool search_kb</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>answer или write</b>ответ или секции</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>validate</b>свежий поиск в RAG</div>
+  </div>
+  <div class="grid g3">
+    <div class="card"><h3>Знания</h3><p>Qdrant: эмбеддинги и метаданные чанков.</p></div>
+    <div class="card"><h3>Диалог</h3><p>Postgres: чаты, feedback, лимит сообщений. Redis — кеш, без него сервис живёт в degraded.</p></div>
+    <div class="card"><h3>Наблюдение</h3><p>structlog и трейсы в Phoenix. Стоимость ответа в заголовке.</p></div>
+  </div>
+  <div class="foot"><span>05 / 13</span><div class="bar"><span style="width:38%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Главная мысль: мы не выбирали одну модель на всё. Для маршрутизации и tools нужна быстрая дешёвая модель; для финального RAG-ответа — отдельная модель синтеза; для поиска — embeddings плюс реранкер. Реранкер включён по умолчанию: он перечитывает пару вопрос-чанк и помогает не брать похожий, но неверный фрагмент. Локальный Ollama — только проверка fallback, без расчёта железа.">
+  <p class="kicker">Выбор моделей</p>
+  <h2>Не одна модель на всё, а роли в пайплайне</h2>
+  <p class="lead" style="margin-bottom:28px">Модель выбиралась не «самая большая», а подходящая под задачу: быстро направить запрос, найти источники и собрать ответ без выдумывания.</p>
+  <div class="grid g3" style="margin-bottom:22px">
+    <div class="card">
+      <h3>Агенты</h3>
+      <p><b class="nowrap">gpt-4o-mini</b>, температура 0. Используется для classify, search, answer/write и validate: быстрые шаги, tool calling, предсказуемые ответы.</p>
+    </div>
+    <div class="card">
+      <h3>Синтез ответа</h3>
+      <p><b class="nowrap">gpt-5.4-mini</b>, температура 0. Отдельная модель для RAG-ответа: собрать несколько найденных фрагментов в связный ответ с цитатами.</p>
+    </div>
+    <div class="card">
+      <h3>Поиск</h3>
+      <p><b class="nowrap">text-embedding-3-small</b> → Qdrant, затем <b>bge-reranker-v2-m3</b>. Реранкер включён по умолчанию: он проверяет, какие чанки действительно отвечают на вопрос.</p>
+    </div>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>От чего отказались</h3>
+      <ul>
+        <li><b>Одна большая модель везде</b> — дороже, а routing и validate не требуют максимальной модели.</li>
+        <li><b>Одна и та же модель для агентов и RAG</b> — смешивает короткие tool-шаги и длинный синтез ответа.</li>
+        <li><b>Поиск без реранкера</b> — быстрее, но чаще поднимает похожий чанк вместо точного.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Рекомендация</h3>
+      <ul>
+        <li>Оставить текущий split: агенты, синтез, embeddings отдельно.</li>
+        <li>Реранкер держать включённым; для стабильного запуска нужен HF-кэш и замер latency.</li>
+        <li>Локальный <b>Ollama llama3.2:3b</b> оставить только как проверку fallback; железо и SLO под него не считать.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span>06 / 13</span><div class="bar"><span style="width:46%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Объяснить слайд как цепочку. Сначала документы режутся по markdown-заголовкам, чтобы не потерять таблицы и примеры. Потом Qdrant быстро достаёт кандидатов через dense/BM25. После этого реранкер перечитывает вопрос и каждый кандидат, чтобы выбрать не просто похожий, а правильный чанк.">
+  <p class="kicker">Хранение и поиск</p>
+  <h2>Как система выбирает правильный фрагмент</h2>
+  <p class="lead" style="margin-bottom:32px">Поиск устроен в два шага: сначала быстро найти кандидатов, потом реранкером проверить, какой чанк действительно отвечает на вопрос.</p>
+  <div class="flow" style="margin-bottom:32px">
+    <div class="node"><b>Markdown</b>страницы KB</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>Чанки</b>по заголовкам</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>Qdrant</b>dense + BM25</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>Реранкер</b>проверяет вопрос ↔ чанк</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>LLM</b>ответ с цитатами</div>
+  </div>
+  <div class="grid g3">
+    <div class="card">
+      <h3>Где лежат знания</h3>
+      <p>Qdrant хранит векторы и метаданные чанков. Postgres остаётся для истории чата, поэтому диалоги и база знаний не смешиваются.</p>
+    </div>
+    <div class="card">
+      <h3>Как режем документы</h3>
+      <p>Чанк — раздел markdown: до 1024 токенов, overlap 128. Так таблицы контрактов и примеры не разваливаются на отдельные предложения.</p>
+    </div>
+    <div class="card">
+      <h3>Зачем реранкер</h3>
+      <p>Qdrant даёт похожие кандидаты. Реранкер включён по умолчанию и выбирает из них точные: он сравнивает сам вопрос с текстом чанка.</p>
+    </div>
+  </div>
+  <div class="foot"><span>07 / 13</span><div class="bar"><span style="width:54%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Показать текущий граф как развилку. До classify стоит validate_input: он режет prompt injection и base64-like payload до агентов. Затем classify определяет сценарий. Дальше три независимые ветки: answer — короткий ответ по KB, write — документ фичи через kit-агентов, reject — пунктирная ветка без генерации для чужих запросов.">
+  <p class="kicker">Агентный слой</p>
+  <h2>Граф ролей вместо одного большого агента</h2>
+  <p class="lead" style="margin-bottom:28px">Каждый агент делает одну работу. Поэтому видно, где был поиск, где написание, а где проверка ответа.</p>
+  <div style="display:grid; grid-template-columns:190px 46px 200px 46px 200px 60px 1fr; grid-template-rows:repeat(3, 88px); gap:14px; align-items:center; margin-bottom:28px">
+    <div class="node" style="grid-row:1 / 4"><b>Пользователь</b>вопрос, поиск или документ</div>
+    <div class="arrow" style="grid-row:1 / 4">→</div>
+    <div class="node" style="grid-row:1 / 4"><b>valid input</b>guard до агентов</div>
+    <div class="arrow" style="grid-row:1 / 4">→</div>
+    <div class="node" style="grid-row:1 / 4"><b>classify</b>выбирает сценарий</div>
+
+    <div class="arrow">→</div>
+    <div class="node"><b>answer</b>search_kb → короткий ответ → validate</div>
+
+    <div class="arrow">→</div>
+    <div class="node"><b>write</b>search_kb → kit-агенты по секциям → validate</div>
+
+    <div class="arrow" style="color:var(--muted)">⇢</div>
+    <div class="node" style="border-style:dashed; background:var(--accent-soft)"><b>reject</b>чужая тема или нет опоры в KB</div>
+  </div>
+  <div class="grid g3">
+    <div class="card">
+      <h3>Текущая версия</h3>
+      <p>Сначала <b>validate_input</b>, затем LangGraph с явным state: <b>answer</b>, <b>write</b> и пунктирный <b>reject</b>.</p>
+    </div>
+    <div class="card">
+      <h3>Что пробовали</h3>
+      <p>v1: простой RAG + LLM. v2: один ReAct с <b>search_kb</b> и <b>write_feature_doc</b>. v3: граф ролей — текущий вариант.</p>
+    </div>
+    <div class="card">
+      <h3>Почему не один агент</h3>
+      <p>ReAct был чуть быстрее, но смешивал поиск, черновик и проверку. В графе validate заново читает KB и не верит тексту, который только что написал write.</p>
+    </div>
+  </div>
+  <div class="foot"><span>08 / 13</span><div class="bar"><span style="width:62%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Главная мысль: сбой не должен превращаться в тихую галлюцинацию. Есть три поведения. Повторяем временные ошибки OpenAI. Деградируем только там, где качество сохраняется: например, без реранкера можно временно остаться на dense/BM25. Отказываем, когда нет источника, Qdrant недоступен или граф агентов не может безопасно закончить работу. Локальный Ollama есть как fallback простого клиента, но не подменяет агентный граф.">
+  <p class="kicker">Поведение при сбоях</p>
+  <h2>Лучше честный отказ, чем тихая подмена ответа</h2>
+  <p class="lead" style="margin-bottom:32px">Fallback используется только там, где он не ломает доверие к ответу. Если система не может опереться на KB, она говорит об этом явно.</p>
+  <div class="grid g3" style="margin-bottom:24px">
+    <div class="card">
+      <h3>1. Повторяем</h3>
+      <ul>
+        <li>Временная ошибка модели — до 3 попыток.</li>
+        <li>Rate limit, auth и moderation не ретраятся.</li>
+        <li>Пустой ответ агента — отдельная ошибка, не молчание.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>2. Деградируем</h3>
+      <ul>
+        <li>Если реранкер недоступен, можно временно остаться на dense/BM25.</li>
+        <li>Локальный Ollama проверяет fallback простого клиента.</li>
+        <li>Но агентный граф не заменяется тихо на слабую модель.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>3. Отказываем</h3>
+      <ul>
+        <li>Score ниже 0,3 — «в базе нет ответа».</li>
+        <li>Prompt injection / DAN / base64-like ввод — 400 до агентов.</li>
+        <li>Qdrant недоступен — поиск не притворяется успешным.</li>
+        <li>Без OpenAI embeddings новый поиск не строится.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="background:var(--accent-soft)">
+    <h3>Правило</h3>
+    <p>Если fallback ухудшает достоверность контрактов или документа фичи, пользователь видит понятную ошибку вместо «примерно похожего» ответа.</p>
+  </div>
+  <div class="foot"><span>09 / 13</span><div class="bar"><span style="width:69%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Называть только то, что показываем как результат. Восемь сценариев агентов — все прошли, включая уточнение диалога и документ на 27 тысяч знаков. Пять вопросов RAG на учебном корпусе. Garak-style prompt injection считаем пройденным: validate_input возвращает 400 до LangGraph/LLM и теперь стоит на Telegram/web workflow.">
+  <p class="kicker">Результат</p>
+  <h2>Что реально прогнано</h2>
+  <p class="lead" style="margin-bottom:32px">Здесь только проверки, которые запускались. Не «ожидаемое качество», а фактический результат прогона.</p>
+  <div class="grid g3" style="margin-bottom:24px">
+    <div class="card">
+      <h3>Агенты</h3>
+      <p style="font-size:56px; color:var(--ok); line-height:1; margin-bottom:12px">8 / 8</p>
+      <p>Прошли сценарии ответа, поиска, документа фичи на 27 049 знаков, уточнения темы, приветствия и reject.</p>
+    </div>
+    <div class="card">
+      <h3>RAG</h3>
+      <p style="font-size:56px; color:var(--ok); line-height:1; margin-bottom:12px">4 / 5</p>
+      <p>На учебном корпусе 4 релевантных ответа. Вопрос про погоду дал score 0,17 и честный отказ. Порог — 0,3.</p>
+    </div>
+    <div class="card">
+      <h3>Garak-style</h3>
+      <p style="font-size:56px; color:var(--ok); line-height:1; margin-bottom:12px">PASS</p>
+      <p>Prompt injection запросы режутся <b>validate_input</b>: HTTP 400 до LangGraph и до текста модели.</p>
+    </div>
+  </div>
+  <div class="card" style="background:var(--accent-soft)">
+    <h3>Что это значит</h3>
+    <p>Защитный слой стоит на Telegram/web workflow: вредный вход останавливается до LLM. Baseline Garak показывал риск prompt injection; после guard-слоя этот класс запросов закрывается на входе.</p>
+  </div>
+  <div class="foot"><span>10 / 13</span><div class="bar"><span style="width:77%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Подать как зрелость, а не как список проблем. Система уже умеет не отвечать без источника, режет вредный ввод и проверяет результат через validate. Следующие шаги — улучшение качества поиска и управляемости: более тонкая нарезка, метаданные, чекпоинты и человек в контуре для длинных документов.">
+  <p class="kicker">Контроль качества</p>
+  <h2>Система не просто отвечает — она знает, когда нельзя</h2>
+  <p class="lead" style="margin-bottom:32px">Главный принцип: лучше честно отказать, чем уверенно придумать контракт. Это уже встроено в пайплайн.</p>
+  <div class="grid g3" style="margin-bottom:24px">
+    <div class="card">
+      <h3>Безопасный вход</h3>
+      <ul>
+        <li>Prompt injection режется до LLM.</li>
+        <li>Чужая тема уходит в reject.</li>
+        <li>Вредный или слишком шумный ввод не попадает к агентам.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Ответ только по KB</h3>
+      <ul>
+        <li>Qdrant находит кандидатов.</li>
+        <li>Реранкер выбирает правильный чанк.</li>
+        <li>Если источника нет — система говорит «не нашёл».</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Проверка результата</h3>
+      <ul>
+        <li>Validate заново читает KB.</li>
+        <li>Write не проверяет сам себя.</li>
+        <li>Длинный документ собирается по секциям.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="background:var(--accent-soft)">
+    <h3>Дальше усиливаем</h3>
+    <p>Точнее резать большие разделы, добавлять метаданные к чанкам, включить чекпоинты и human-in-the-loop для длинных документов. Это roadmap улучшения качества, а не blocker для демо.</p>
+  </div>
+  <div class="foot"><span>11 / 13</span><div class="bar"><span style="width:85%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Этот слайд — не список пожеланий, а то, что уже работает сверх основного сценария. Не обещать подтверждение опасных действий и отдельный раздел ограничений: их в проекте нет. Коротко пройти по пяти пунктам: метрики на эталонных вопросах, трейс одного запуска, одна команда тестов, модерация с лимитом, история чата в Postgres.">
+  <p class="kicker">Дополнительно</p>
+  <h2 style="margin-bottom:36px">Что уже усиливает работу</h2>
+  <div class="sheet">
+  <table>
+    <thead>
+      <tr><th>Что</th><th>Как сделано</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Эталонные вопросы и метрики</td>
+        <td>Наборы вопросов к чату и к генерации документа. Считаются оценки и pass rate, а не «работает нормально».</td>
+      </tr>
+      <tr>
+        <td>Трейсинг запуска</td>
+        <td>Шаги одного прогона видны в Phoenix: от запроса до ответа модели.</td>
+      </tr>
+      <tr>
+        <td>Тесты одной командой</td>
+        <td><span class="nowrap">uv run pytest</span> прогоняет весь набор.</td>
+      </tr>
+      <tr>
+        <td>Модерация и лимит запросов</td>
+        <td>Входное сообщение проверяется до агентов. Частота запросов ограничена.</td>
+      </tr>
+      <tr>
+        <td>Диалог после перезапуска</td>
+        <td>История чата хранится в Postgres и остаётся после рестарта сервиса.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="foot"><span>12 / 13</span><div class="bar"><span style="width:92%"></span></div></div>
+</section>
+
+<section class="slide" data-note="Закрыть итогом: сделан ассистент аналитика, который ищет по базе знаний, отвечает с опорой на источники и собирает черновик документации. Достигнуто за счёт трёх опор: поиск по KB с реранкером, граф ролей вместо одного агента, защитный и проверочный контур. Завершить простым спасибо.">
+  <p class="kicker">Итог</p>
+  <h2>DocIntel превращает базу знаний в рабочий инструмент аналитика</h2>
+  <p class="lead" style="margin-bottom:34px">Система не просто генерирует текст: она ищет источники, выбирает релевантные фрагменты, собирает ответ или документ и проверяет границы допустимого.</p>
+  <div class="grid g3" style="margin-bottom:26px">
+    <div class="card">
+      <h3>Что сделано</h3>
+      <p>Telegram/web-ассистент для поиска, ответов по контрактам, черновиков фичи и честного reject вне темы.</p>
+    </div>
+    <div class="card">
+      <h3>Как достигнуто</h3>
+      <p>Qdrant + реранкер находят нужные чанки, LangGraph разделяет роли, validate заново сверяет результат с KB.</p>
+    </div>
+    <div class="card">
+      <h3>На чём держится</h3>
+      <p>Разные модели под разные роли, guard до LLM, ответы с источниками и отказ там, где нет опоры на базу.</p>
+    </div>
+  </div>
+  <div class="card" style="background:var(--accent-soft)">
+    <p style="font-size:30px; line-height:1.3; margin:0">Итог: меньше ручного поиска по документации, меньше риска выдуманного контракта, быстрее подготовка черновика.</p>
+  </div>
+  <div class="card" style="margin-top:auto; text-align:center">
+    <p style="font-family:'Avenir Next','Segoe UI',sans-serif; font-size:36px; color:var(--accent); margin:0">Спасибо за внимание</p>
+  </div>
+  <div class="foot"><span>13 / 13</span><div class="bar"><span style="width:100%"></span></div></div>
+</section>
+
+</div>
+<div id="notes"></div>
+<script>
+const slides = [...document.querySelectorAll(".slide")];
+const notes = document.getElementById("notes");
+let i = 0;
+function show(n) {
+  i = Math.max(0, Math.min(slides.length - 1, n));
+  slides.forEach((s, k) => s.classList.toggle("active", k === i));
+  notes.textContent = slides[i].dataset.note || "";
+  history.replaceState(null, "", "#" + (i + 1));
+}
+function fit() {
+  const s = document.getElementById("stage");
+  const k = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+  s.style.transform = `translate(-50%, -50%) scale(${k})`;
+}
+document.addEventListener("keydown", (e) => {
+  if (["ArrowRight", "PageDown", " "].includes(e.key)) { e.preventDefault(); show(i + 1); }
+  if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); show(i - 1); }
+  if (e.key === "Home") show(0);
+  if (e.key === "End") show(slides.length - 1);
+  if (e.key === "n" || e.key === "N" || e.key === "т" || e.key === "Т") notes.classList.toggle("on");
+});
+window.addEventListener("resize", fit);
+const hash = parseInt(location.hash.slice(1), 10);
+fit();
+show(Number.isFinite(hash) ? hash - 1 : 0);
+</script>
+</body>
+</html>

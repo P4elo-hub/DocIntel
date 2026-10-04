@@ -21,8 +21,10 @@ from sqlalchemy import text
 from app.chat.deps import ChatServiceDep
 from app.chat.domain import Chat, ChatMessage
 from app.core.config import get_settings
+from app.core.exceptions import SecurityValidationError
 from app.deps.providers import SessionFactoryDep
 from app.ratelimit.dependencies import enforce_rate_limit
+from app.services.security.input_validator import validate_input
 
 FeedbackValue = Literal["up", "down"]
 
@@ -32,6 +34,14 @@ _settings = get_settings()
 _rate_limit_message = enforce_rate_limit(
     "message", _settings.rate_limit_messages_per_min
 )
+
+
+def _validate_prompt_injection_guard(content: str) -> None:
+    if not get_settings().security_enabled:
+        return
+    result = validate_input(content or "")
+    if not result.ok:
+        raise SecurityValidationError(result.reason or "input rejected", rule=result.rule)
 
 
 class CreateChatIn(BaseModel):
@@ -83,6 +93,7 @@ async def post_message(
         str | None, Header(alias="X-Owner-External-Id")
     ] = None,
 ) -> StreamingResponse:
+    _validate_prompt_injection_guard(content)
     mod_result = await chat_service.check_input(
         content, owner_external_id=owner_external_id
     )

@@ -9,9 +9,11 @@ from app.services.ingestion import (
     doc_type_from_path,
     enrich,
     file_metadata,
+    is_auxiliary_kb_path,
     is_deprecated_path,
     layer_from_path,
     release_version_from_filename,
+    strip_db_row_dump,
     ticket_from_path,
     version_from_filename,
 )
@@ -71,6 +73,12 @@ def test_layer_from_path() -> None:
     assert layer_from_path("data/my-kb/SIHIST/SIHIST_markdown_МП/SIHIST_[МП]_x.md") == "MP"
     assert layer_from_path("data/my-kb/SIHIST/db-export/БД.md") == "DB"
     assert layer_from_path("data/loose.md") == "general"
+    assert layer_from_path("data/my-kb/SIHIST/09-Current-State/02-Modules/x.md") == "BE"
+    assert layer_from_path("data/my-kb/SIHIST/09-Current-State/03-UseCases/x.md") == "MP"
+    assert layer_from_path("data/my-kb/SIHIST/09-Current-State/04-Frontend/x.md") == "FE"
+    assert (
+        layer_from_path("data/my-kb/SIHIST/09-Current-State/01-Context/x.md") == "general"
+    )
 
 
 def test_release_version_from_filename() -> None:
@@ -100,6 +108,54 @@ def test_enrich_cleans_text_and_excludes_technical_keys() -> None:
     assert "Стр. 3 из 9" not in out[0].text
     assert out[0].excluded_embed_metadata_keys == EXCLUDED_EMBED_KEYS
     assert out[0].excluded_llm_metadata_keys == EXCLUDED_EMBED_KEYS
+
+
+def test_is_auxiliary_kb_path_skips_actual_summaries() -> None:
+    assert is_auxiliary_kb_path("data/my-kb/_actual/integrations-current.md")
+    assert is_auxiliary_kb_path("/repo/data/my-kb/_actual/glossary.md")
+    assert not is_auxiliary_kb_path(
+        "data/my-kb/SIHIST/09-Current-State/02-Modules/x.md"
+    )
+
+
+def test_strip_db_row_dump_keeps_schema_and_drops_rows() -> None:
+    raw = "\n".join(
+        [
+            "# БД ИО",
+            "## Назначение",
+            "Схема.",
+            "## Описание таблиц",
+            "Колонки operation.",
+            "## Полное заполнение таблиц по выгрузке с прома",
+            "| id | name |",
+            "| 1 | coupon |",
+            "## Примечания по кэшам",
+            "Кэш не перетирать.",
+            "## SQL для текущего состояния БД (актуальная промовая выгрузка)",
+            "INSERT INTO operation VALUES (1);",
+            "## Кэш БД ИО",
+            '{"operation": []}',
+        ]
+    )
+    out = strip_db_row_dump(raw)
+    assert "Схема." in out
+    assert "Колонки operation." in out
+    assert "Кэш не перетирать." in out
+    assert "coupon" not in out
+    assert "INSERT INTO" not in out
+    assert '"operation"' not in out
+
+
+def test_enrich_strips_db_export_rows() -> None:
+    docs = [
+        Document(
+            text="## Назначение\nкоротко\n## Полное заполнение таблиц по выгрузке с прома\nстрока",
+            metadata={"source": "БД ИО.md", "file_path": "data/my-kb/SIHIST/db-export/БД ИО.md"},
+        )
+    ]
+    out = enrich(docs)
+    assert "коротко" in out[0].text
+    assert "строка" not in out[0].text
 
 
 def test_enrich_marks_superseded_document_deprecated() -> None:

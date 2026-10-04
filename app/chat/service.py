@@ -16,6 +16,7 @@ from app.chat.rag_query import (
     needs_context_expansion,
     sanitize_condensed,
 )
+from app.core.config import get_settings
 from app.core.exceptions import VoiceUnavailableError
 from app.chat.prompt_selection import choose_by_split
 from app.chat.repository import ChatRepository, SystemPromptRepository
@@ -23,6 +24,7 @@ from app.chat.tokens import count_tokens, fit_to_budget
 from app.moderation.domain import ModerationResult
 from app.moderation.service import ModerationService
 from app.services.cache import agent_query_cache_key
+from app.services.security.input_validator import validate_input
 
 logger = structlog.get_logger("chat-service")
 
@@ -209,11 +211,10 @@ class ChatService:
                 "из собственных знаний и ничего не выдумывай.\n"
                 "2. После каждого факта ставь номер источника в квадратных "
                 "скобках, например [1] или [2].\n"
-                "3. Если в источниках описаны и старое состояние (AS IS), и новое "
-                "(TO BE) — отвечай по TO BE как по актуальному; AS IS упоминай "
-                "только если об этом прямо спрашивают. При противоречии между "
-                "источниками предпочитай более новый (TO BE, свежая версия релиза, "
-                "не помеченный как устаревший).\n"
+                "3. Источники описывают текущее состояние продукта — отвечай по ним. "
+                "Если страница явно помечает поведение как legacy или устаревшее, "
+                "так и скажи и приведи актуальное, если оно есть в источниках. "
+                "Не выдумывай более новую версию, которой в источниках нет.\n"
                 "4. Собирай ответ из всех релевантных источников, даже если каждый "
                 "фрагмент неполный. Отказывайся («В базе знаний я не нашёл ответа») "
                 "только если ни один источник не содержит информации по сути вопроса.\n"
@@ -221,7 +222,10 @@ class ChatService:
                 "(gRPC GET_DETAILS / SEND_DETAILS, proto-поля операции), (в) Composite "
                 "→ МП (screenData, sections). На уточнения («это не то», «нужен формат "
                 "HO→Composite») отвечай по правильному слою из источников.\n"
-                "6. Термины и аббревиатуры (например, DCA, БПХ, BC) понимай в "
+                "6. Если просят пример типа операции, а дословного JSON этого "
+                "типа в источниках нет — скажи, что такого примера в базе нет. "
+                "Не собирай JSON по аналогии и не подставляй чужой пример.\n"
+                "7. Термины и аббревиатуры (например, DCA, БПХ, BC) понимай в "
                 "контексте продукта «История операций» по этим источникам. Если "
                 "твои предыдущие ответы в этом диалоге противоречат источникам — "
                 "источники приоритетны: исправь ошибку и ответь по источникам, "
@@ -429,6 +433,16 @@ class ChatService:
         # Голос/файл: транскрипт кладём в content, иначе в БД пустая строка и
         # follow-up/история ломаются, если media_refs не прочитали.
         current_query = extract_rag_query(user_content, media_refs)
+        if get_settings().security_enabled:
+            validation = validate_input(current_query)
+            if not validation.ok:
+                yield {
+                    "type": "error",
+                    "code": "input_rejected",
+                    "message": validation.reason or "input rejected",
+                    "rule": validation.rule,
+                }
+                return
         stored_content = (user_content or "").strip() or current_query
 
         user_message = ChatMessage(

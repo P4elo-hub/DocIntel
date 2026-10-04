@@ -56,6 +56,19 @@ EXCLUDED_EMBED_KEYS = [
 # отвечала по старым экранам («Старая Лента» заменена «Композитом»).
 _DEPRECATED_PATH_MARKERS = ("Старая Лента", "Старая лента", "старая лента")
 
+# Сводки, написанные поверх старого списка фич. В 09-Current-State те же темы
+# уже собраны без противоречий, поэтому `_actual/` в индекс не кладём.
+_AUXILIARY_PATH_MARKERS = ("/_actual/",)
+
+# Имя выгрузки БД. Из неё в индекс идут схема и описания таблиц, без простыней строк.
+_DB_EXPORT_NAME = "БД ИО.md"
+_DB_DUMP_H2_PREFIXES = (
+    "ERD с данными",
+    "Полное заполнение таблиц",
+    "SQL для текущего состояния БД",
+    "Кэш БД ИО",
+)
+
 # Маркер ручной дедупликации в теле документа: строка вида
 #   superseded_by: SIHIST-1234   (или <!-- superseded_by: SIHIST-1234 -->)
 # помечает фичу как замещённую другой — такой документ считается устаревшим.
@@ -108,15 +121,23 @@ def ticket_from_path(path: str) -> str:
 
 
 def layer_from_path(path: str) -> str:
-    """Слой продукта из пути: BE / FE / MP / DB / general."""
-    lowered = str(path).lower()
-    if "markdown_back" in lowered or "/back" in lowered:
-        return "BE"
-    if "markdown_front" in lowered or "/front" in lowered:
+    """Слой продукта из пути: BE / FE / MP / DB / general.
+
+    Новая база (`09-Current-State`) размечена папками. Старые выгрузки фич
+    (`markdown_back` / `markdown_front` / `markdown_МП`) распознаются так же.
+    """
+    lowered = str(path).lower().replace("\\", "/")
+    if "/04-frontend/" in lowered or "markdown_front" in lowered or "/front/" in lowered:
         return "FE"
-    if "markdown_мп" in lowered or "_[мп]" in lowered or "[мп]" in lowered:
+    if "/03-usecases/" in lowered or "markdown_мп" in lowered or "[мп]" in lowered:
         return "MP"
-    if "db-export" in lowered or "/db" in lowered:
+    if "/02-modules/" in lowered or "markdown_back" in lowered or "/back/" in lowered:
+        return "BE"
+    if (
+        "/06-data-dictionary/" in lowered
+        or "db-export" in lowered
+        or "/db/" in lowered
+    ):
         return "DB"
     return "general"
 
@@ -135,10 +156,43 @@ def is_deprecated_path(path: str) -> bool:
     return any(marker in str(path) for marker in _DEPRECATED_PATH_MARKERS)
 
 
+def is_auxiliary_kb_path(path: str) -> bool:
+    """Сводка из `_actual/`: дублирует 09-Current-State, в индекс не входит."""
+    normalized = "/" + str(path).replace("\\", "/").lstrip("/")
+    return any(marker in normalized for marker in _AUXILIARY_PATH_MARKERS)
+
+
+def strip_db_row_dump(text: str) -> str:
+    """Оставляет в выгрузке БД схему и описания, убирает заполнение строками.
+
+    Простыни (`ERD с данными`, полное заполнение таблиц, SQL/DML, JSON кэша)
+    составляют половину корпуса и перебивают страницы базы в поиске.
+    """
+    kept: list[str] = []
+    skipping = False
+    for line in text.splitlines():
+        if line.startswith("## ") and not line.startswith("###"):
+            title = line[3:].strip()
+            skipping = title.startswith(_DB_DUMP_H2_PREFIXES)
+        if not skipping:
+            kept.append(line)
+    return "\n".join(kept).strip()
+
+
+def _doc_path(doc: Document) -> str:
+    meta = doc.metadata or {}
+    return str(meta.get("file_path") or meta.get("source") or "")
+
+
+def _is_db_export_doc(doc: Document) -> bool:
+    return Path(_doc_path(doc)).name == _DB_EXPORT_NAME
+
+
 def file_metadata(path: str) -> dict[str, str]:
     """Хук `SimpleDirectoryReader.file_metadata`: метаданные на этапе загрузки."""
     return {
         "source": Path(path).name,
+        "file_path": str(path),
         "department": department_from_path(path),
         "doc_type": doc_type_from_path(path),
         "version": version_from_filename(path),
@@ -160,6 +214,8 @@ def enrich(documents: list[Document]) -> list[Document]:
     """
     for doc in documents:
         text = doc.text
+        if _is_db_export_doc(doc):
+            text = strip_db_row_dump(text)
         superseded = _SUPERSEDED_RE.search(text)
         if superseded:
             doc.metadata["superseded_by"] = superseded.group(1).upper()
@@ -225,9 +281,10 @@ class IngestionService:
         """Разбиение документа на ноды перед эмбеддингом.
 
         При `rag_chunk_by_headings` сначала режем markdown по заголовкам
-        (раздел фичи AS IS / TO BE / Интеграции остаётся цельным чанком с
-        путём заголовков в метаданных), затем ограничиваем размер слишком
-        крупных разделов `SentenceSplitter`. Иначе — только по предложениям.
+        (раздел страницы — «Назначение», «Текущее поведение», «Контракт» —
+        остаётся цельным чанком с путём заголовков в метаданных), затем
+        ограничиваем размер слишком крупных разделов `SentenceSplitter`.
+        Иначе — только по предложениям.
         """
         splitter = SentenceSplitter(
             chunk_size=self._settings.rag_chunk_size,
@@ -297,6 +354,11 @@ class IngestionService:
             filename_as_id=True,
         )
         documents = enrich(reader.load_data())
+        kept_docs = [d for d in documents if not is_auxiliary_kb_path(_doc_path(d))]
+        skipped_auxiliary = len(documents) - len(kept_docs)
+        if skipped_auxiliary:
+            logger.info("ingestion: пропущены сводки _actual, документов=%d", skipped_auxiliary)
+        documents = kept_docs
         if self._settings.rag_skip_deprecated:
             kept = [d for d in documents if not _is_deprecated_doc(d)]
             skipped = len(documents) - len(kept)
