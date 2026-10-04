@@ -1,7 +1,10 @@
 """Answer-агент: формулирует ответ по KB (не полный документ фичи).
 
 Сценарий: classify → retrieve_rag → answer → validate.
-Вход: user_request + search_context. Выход: draft_answer (Markdown).
+Вход: user_request + search_context.
+История чата сюда не кладётся: classify/condense уже учли её в поисковом
+запросе, retrieve собрал KB. Сырой диалог в промпте конкурировал с KB.
+Выход: draft_answer (Markdown).
 """
 
 from __future__ import annotations
@@ -12,24 +15,37 @@ from app.services.docintel.client import ToolCallClient
 
 log = logging.getLogger(__name__)
 
-_KB_LIMIT = 18_000
+_KB_LIMIT = 28_000
 _Q_LIMIT = 4_000
 
 _SYSTEM = (
-    "Ты answer_agent DocIntel. По запросу пользователя, контексту диалога и "
-    "фрагментам KB (search_context) сформулируй точный ответ на русском.\n"
+    "Ты answer_agent DocIntel. Сформулируй точный ответ на русском.\n"
     "\n"
-    "Правила:\n"
-    "- Опирайся на search_context, запрос и контекст диалога "
-    "(если ссылаются на прошлый пример/сообщение — бери его из диалога).\n"
-    "- Отвечай на вопрос целиком: если спрашивают как работает / по какому "
-    "обмену / в каком формате — сначала поясни по KB, потом приведи пример.\n"
-    "- Если просят показать ту же операцию в другом формате обмена — "
-    "трансформируй поля по правилам из KB, не выкидывай данные из примера диалога.\n"
-    "- Если просят пример request/response — скопируй JSON/таблицы из KB "
-    "целиком (все поля), не сокращай и не подменяй учебным REST-скелетом.\n"
+    "Входы:\n"
+    "- Запрос пользователя — что нужно ответить сейчас "
+    "(если есть «поисковая формулировка» — это тот же вопрос с учётом диалога).\n"
+    "- search_context (KB) — единственный источник фактов, полей, JSON, "
+    "endpoint, примеров.\n"
+    "\n"
+    "ЖЁСТКОЕ ПРАВИЛО СООТВЕТСТВИЯ ЗАПРОСУ (нарушать нельзя):\n"
+    "- Отвечай ТОЛЬКО про тот объект, о котором спросили: интеграционный "
+    "обмен/API, таблицу, сервис, слой (BPH/HO/Composite/фронт), экран.\n"
+    "- Если спросили один обмен (напр. GET_OPERATIONS_WITH_DETAILS / "
+    "GetOperationsWithDetails) — НЕ подставляй JSON, поля и примеры из "
+    "другого обмена (SendOperations, SEND_OPERATIONS_FEED, ScreenApi, "
+    "фронтовый screenData/sections и т.п.), даже если они есть в "
+    "search_context рядом.\n"
+    "- Если спросили одну таблицу/сущность — не отвечай данными другой.\n"
+    "- Если в KB нет примера именно по запрошенному обмену/таблице — "
+    "честно скажи, что в контексте нет нужного контракта. Не «спасай» "
+    "ответ похожим JSON с другого слоя.\n"
+    "\n"
+    "Прочие правила:\n"
+    "- Опирайся на search_context (сначала «Контракты из файлов KB», "
+    "потом RAG), но только релевантные запросу фрагменты.\n"
+    "- Пример request/response — копируй из KB целиком, не сокращай и "
+    "не подменяй учебным скелетом.\n"
     "- Не выдумывай поля, endpoint, коды ошибок.\n"
-    "- Если в KB нет ответа — так и скажи, предложи уточнить запрос.\n"
     "- Ответ — Markdown без преамбулы «Вот ответ» и без обёртки ```markdown."
 )
 
@@ -53,28 +69,23 @@ async def write_answer_from_kb(
     search_context: str,
     chat_history: str = "",
 ) -> str:
-    """Сформулировать ответ на вопрос по артефакту поиска (+ история чата)."""
+    """Сформулировать ответ по запросу + search_context.
+
+    ``chat_history`` оставлен в сигнатуре для совместимости вызовов и
+    игнорируется: сырой диалог в answer не подаём.
+    """
+    del chat_history
     kb = (search_context or "").strip()
     question = (user_request or "").strip()
-    history = (chat_history or "").strip()
     if not question:
         return ""
 
-    parts = [
-        "## Запрос пользователя\n",
-        f"{question[:_Q_LIMIT]}\n\n",
-    ]
-    if history:
-        parts.extend([
-            "## Контекст диалога (если спрашивают про «данное сообщение» / "
-            "прошлый пример — бери отсюда)\n",
-            f"{history[:8000]}\n\n",
-        ])
-    parts.extend([
-        "## search_context (KB)\n",
-        f"{kb[:_KB_LIMIT] if kb else '_(пусто — поиск ничего не вернул)_'}\n",
-    ])
-    user_content = "".join(parts)
+    user_content = (
+        "## Запрос пользователя\n"
+        f"{question[:_Q_LIMIT]}\n\n"
+        "## search_context (KB)\n"
+        f"{kb[:_KB_LIMIT] if kb else '_(пусто — поиск ничего не вернул)_'}\n"
+    )
 
     response = await client._create_completion(
         messages=[

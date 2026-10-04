@@ -112,7 +112,8 @@ upsert → search → prompt → LLM`), и как запасной путь, к�
 | `RAG_RETRIEVE_TOP_K` | 25 | достаём широко из большого корпуса |
 | `RAG_RERANK_TOP_N` | 10 | в контекст LLM отдаём 10 лучших |
 | `RAG_USE_RERANKER` | false | см. «Реранкер» ниже — веса ~2.2 ГБ блокируют старт |
-| `RAG_USE_HYBRID` | false | см. «Гибрид» ниже — несовместимость версий |
+| `RAG_USE_HYBRID` | true | dense + BM25; после смены — full reindex |
+| `RAG_SPARSE_TOP_K` | 5 | BM25-кандидатов ≪ dense (`RAG_RETRIEVE_TOP_K`) |
 | `RAG_SKIP_DEPRECATED` | true | не индексируем устаревшее (папка «Старая Лента», `superseded_by:`) |
 
 Даже с выключенными reranker и hybrid работает dense-поиск по 1024-токенным
@@ -145,14 +146,13 @@ upsert → search → prompt → LLM`), и как запасной путь, к�
 
 Альтернатива — более лёгкая модель `BAAI/bge-reranker-base` (~1.1 ГБ).
 
-### Гибрид (dense + BM25) — почему выключен
+### Гибрид (dense + BM25)
 
-`RAG_USE_HYBRID=true` требует sparse-вектора в коллекции. Но текущая
-`llama-index-vector-stores-qdrant==0.8.8` в hybrid-режиме шлёт устаревший
-`search_batch` без имени вектора → Qdrant отвечает `400 (Collection requires
-specified vector name)`. Починка: апгрейд до `llama-index-vector-stores-qdrant>=0.10`
-(требует `qdrant-client>=1.16`; сейчас пин `<1.16` ради bare-metal `vector_store.py`).
-После апгрейда включить флаг и сделать полный reindex (создаст sparse-вектора).
+`RAG_USE_HYBRID=true` — dense (эмбеддинги) + sparse BM25 (`RAG_SPARSE_MODEL`,
+по умолчанию `Qdrant/bm25`) через `llama-index-vector-stores-qdrant>=0.10` и
+`qdrant-client>=1.16`. Нужен полный reindex: коллекция с named векторами
+`text-dense` + `text-sparse-new`. Сервер Qdrant лучше `v1.16+` (клиент ругается
+на gap >1 minor к `v1.14`, но hybrid при этом уже работает).
 
 ### Метаданные документа
 

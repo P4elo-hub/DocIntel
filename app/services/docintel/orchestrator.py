@@ -86,14 +86,23 @@ class SectionOrchestrator:
         feature_name: str | None = None,
         protocol: str | None = None,
         search_context: str = "",
+        plan_brief: str | None = None,
     ) -> ChatResult:
-        plan = build_execution_plan(feature_brief)
+        # План секций — только по свежему брифу (без истории чата).
+        routing_brief = (plan_brief or feature_brief or "").strip()
+        plan = build_execution_plan(routing_brief)
         if not plan:
             return ChatResult(
                 text="Не удалось построить план разделов для brief.",
                 tool_calls_made=0,
                 model=self._client._model,
             )
+
+        print(
+            "  → write plan (selective): "
+            + ", ".join(step.tool_name for step in plan),
+            flush=True,
+        )
 
         kb_context = search_context.strip()[:_KB_CONTEXT_LIMIT]
         section_outputs: list[str] = []

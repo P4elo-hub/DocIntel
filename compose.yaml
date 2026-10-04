@@ -20,11 +20,16 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/llm_service
       BOT_URL: http://bot:9000
       QDRANT_URL: http://qdrant:6333
+      # Веса bge-reranker пишутся в named volume hf_cache (entrypoint чинит uid).
+      HF_HOME: /home/appuser/.cache/huggingface
+      TRANSFORMERS_CACHE: /home/appuser/.cache/huggingface
+      SENTENCE_TRANSFORMERS_HOME: /home/appuser/.cache/huggingface/sentence_transformers
     volumes:
       - chat_data:/app/var/chats
       # RAG-корпус с хоста (не в образе — см. .dockerignore); rw для upload/reindex.
       - ./data:/app/data
       # Кэш HuggingFace: веса reranker-модели (~2.2 ГБ) переживают пересборку образа.
+      # Том часто создаётся root:root — /entrypoint.sh делает chown на appuser.
       - hf_cache:/home/appuser/.cache/huggingface
     depends_on:
       postgres:
@@ -137,7 +142,8 @@ services:
       - phoenix-data:/data
 
   qdrant:
-    image: qdrant/qdrant:v1.14.0
+    # Под пару с qdrant-client>=1.16 (hybrid dense+BM25).
+    image: qdrant/qdrant:v1.16.0
     container_name: llm-qdrant
     restart: unless-stopped
     ports:

@@ -57,6 +57,17 @@ def normalize_domain_query(text: str) -> str:
     t = re.sub(r"(?i)\blinkedin\.com\b", "Linked Events", t)
     t = re.sub(r"(?i)\blinkedin\b", "Linked Events", t)
     t = re.sub(r"(?i)\blinked\s*in\b", "Linked Events", t)
+    # Whisper: «GET и OPERATIONS WITH DETAILS» → GET_OPERATIONS_WITH_DETAILS
+    t = re.sub(
+        r"(?i)\bGET\s+и\s+OPERATIONS\s+WITH\s+DETAILS\b",
+        "GET_OPERATIONS_WITH_DETAILS",
+        t,
+    )
+    t = re.sub(
+        r"(?i)\bGET\s+OPERATIONS\s+WITH\s+DETAILS\b",
+        "GET_OPERATIONS_WITH_DETAILS",
+        t,
+    )
     # «в рационной моржи/мараже» → «вариационной маржи/марже»
     t = re.sub(
         r"(?i)\bв\s*рационн(\w*)\s+(?:морж|мараж|марж)(\w*)",
@@ -72,37 +83,44 @@ def normalize_domain_query(text: str) -> str:
     return t
 
 
-def extract_contract_anchors(*texts: str) -> list[str]:
-    """Якорные RAG-запросы по целевому обмену из реплики/истории."""
-    blob = "\n".join(t for t in texts if t).lower()
-    anchors: list[str] = []
-    if re.search(
-        r"get[_\s-]*linked|linked\s*events|linkedin|linkedevents",
-        blob,
-    ):
-        anchors.append(
-            "GET_LINKED_EVENTS linkedEvents JSON пример ответ "
-            "торговые операции комиссии BPH"
-        )
-    if re.search(r"order\s*gateway|\bog\b|огэ|gettradeorders", blob):
-        anchors.append("Order Gateway GetTradeOrders JSON пример торговые операции")
-    if re.search(r"вариацион|varmargin|рацион\w*\s+марж", blob):
-        if re.search(r"лент", blob):
-            anchors.append(
-                "вариационная маржа varmargin композит лента "
-                "operationsHistory screenData"
-            )
-        else:
-            anchors.append(
-                "вариационная маржа varmargin композит деталка "
-                "operationDetails screenData"
-            )
-    # unique preserve order
-    out: list[str] = []
-    for a in anchors:
-        if a not in out:
-            out.append(a)
-    return out
+# «не про Linked Events» / «не о налогах» — иначе имя чужого API уходит в поиск.
+_NEGATED_MENTION_RE = re.compile(
+    r"(?i)(?:\bне\s+про\b|\bне\s+о\b|\bне\s+об\b|\bне\s+про\s+этот\b|"
+    r"\bбез\b|\bкроме\b|\bnot\s+about\b)\s+"
+    r"[«\"'(]?[^.,;:!?\n]{1,80}"
+)
+
+# Имя обмена/метода для вырезания отвергнутых упоминаний.
+_API_TOKEN_RE = (
+    r"(?:Get|Set|Send|Create|Update|Delete|List|Fetch|Post|Put|Patch)"
+    r"[A-Z][A-Za-z0-9]+"
+    r"|(?:[A-Z][A-Z0-9]+(?:[_-][A-Z0-9]+)+)"
+)
+
+# «это SendOperations ты прислал, не тот» / «SendOperations — не то»
+_REJECTED_API_SENT_RE = re.compile(
+    rf"(?i)(?:это\s+)?({_API_TOKEN_RE})"
+    rf"[^.!?\n]{{0,80}}?\bне\s+то[тм]?\b"
+)
+
+# «не SendOperations» / «не тот SendOperations»
+_REJECTED_NE_API_RE = re.compile(
+    rf"(?i)\bне\s+(?:тот\s+|ту\s+|то\s+|та\s+)?({_API_TOKEN_RE})\b"
+)
+
+
+def strip_negated_mentions(text: str) -> str:
+    """Убрать отрицательные упоминания и отвергнутые API перед retrieval."""
+    cleaned = _NEGATED_MENTION_RE.sub(" ", text or "")
+    cleaned = _REJECTED_API_SENT_RE.sub(" ", cleaned)
+    cleaned = _REJECTED_NE_API_RE.sub(" ", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def retrieval_query_text(*texts: str) -> str:
+    """Текст для RAG: нормализация домена + выкинуть «не про X» / отвергнутый API."""
+    blob = "\n".join(t for t in texts if (t or "").strip())
+    return strip_negated_mentions(normalize_domain_query(blob))
 
 
 def extract_rag_query(user_content: str, media_refs: dict | None) -> str:

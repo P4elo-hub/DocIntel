@@ -182,10 +182,20 @@ class ChatService:
         except Exception as exc:
             logger.warning("rag_condense_failed", error=str(exc))
             return current
+        from app.chat.rag_query import prefer_original_if_anchors_dropped
+
         condensed = sanitize_condensed(raw or "", fallback=current)
+        kept = prefer_original_if_anchors_dropped(current, condensed)
+        if kept != condensed:
+            logger.info(
+                "rag_query_condense_rejected_dropped_anchors",
+                original=current[:120],
+                condensed=condensed[:120],
+            )
+            return kept
         if condensed != current:
             logger.info("rag_query_condensed", original=current[:120], condensed=condensed[:120])
-        return condensed
+        return kept
 
     @staticmethod
     def _rag_context_message(context_str: str) -> dict:

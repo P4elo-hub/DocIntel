@@ -202,7 +202,7 @@ class RAGService:
             retriever_kwargs["filters"] = filters
         if self._settings.rag_use_hybrid:
             retriever_kwargs["vector_store_query_mode"] = "hybrid"
-            retriever_kwargs["sparse_top_k"] = self._settings.rag_retrieve_top_k
+            retriever_kwargs["sparse_top_k"] = self._settings.rag_sparse_top_k
         self._retriever = self._index.as_retriever(**retriever_kwargs)
 
         if self._settings.rag_use_reranker:

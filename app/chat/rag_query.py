@@ -48,7 +48,10 @@ _FRONTEND_LAYER_RE = re.compile(
     re.IGNORECASE,
 )
 
-_BPH_LAYER_RE = re.compile(r"бph|bph|brokerage\s*portfolio", re.IGNORECASE)
+_BPH_LAYER_RE = re.compile(
+    r"бпх|бph|bph|brokerage\s*portfolio",
+    re.IGNORECASE,
+)
 
 _MAPPING_RE = re.compile(
     r"сравн|откуда\s+бер|маппинг|налог|tax|комисси|fee|поле",
@@ -145,12 +148,16 @@ def recent_dialog_summary(
 
 
 def recent_dialog_summary_for_agents(history: list[ChatMessage]) -> str:
-    """История для LangGraph: сохраняем полные контракты из прошлых ответов."""
+    """История для LangGraph: диалог нужен как уточнение, не как склад JSON.
+
+    Раньше assistant_max_chars=8000 тащил полные контракты прошлых ответов
+    в classify/answer и модель копировала чужой JSON вместо KB.
+    """
     return recent_dialog_summary(
         history,
         limit=8,
         user_max_chars=1_200,
-        assistant_max_chars=8_000,
+        assistant_max_chars=600,
     )
 
 
@@ -174,6 +181,10 @@ CONDENSE_SYSTEM_PROMPT = (
     "если они есть в текущей реплике или остаются темой диалога.\n"
     "5) Не подставляй другой тип операции «из KB по умолчанию».\n"
     "6) Не добавляй обмены/термины, в которых не уверен.\n"
+    "7) Если текущая реплика называет ДРУГОЙ обмен/тему, чем прошлый ответ "
+    "ассистента (напр. спросили вармаржу/ScreenApi, а в диалоге был "
+    "GetLinkedEvents) — ИГНОРИРУЙ прошлый обмен полностью. Верни запрос "
+    "только по текущей реплике, без Linked Events / чужого API-id.\n"
     "\n"
     "Верни ТОЛЬКО одну строку запроса на русском: без пояснений, кавычек, "
     "префиксов. Если текущая реплика уже самодостаточна — верни её почти "
@@ -245,13 +256,95 @@ def sanitize_condensed(raw: str, *, fallback: str, max_len: int = 400) -> str:
     return text[:max_len]
 
 
+# Явные темы/обмены: если condense их выкинул — откатываем на original.
+_TOPIC_PHRASE_RE = re.compile(
+    r"\blinked\s*events\b"
+    r"|\bвариационн\w*\s+марж\w*"
+    r"|\bвармарж\w*"
+    r"|\bscreen\s*api\b"
+    r"|\bhistory\s*ops\b"
+    r"|\bкомпозит\b",
+    re.IGNORECASE,
+)
+
+# Linked Events ↔ GET_LINKED_EVENTS; GetOperation* ↔ GetOperations*.
+_ANCHOR_ALIAS_GROUPS: tuple[frozenset[str], ...] = (
+    frozenset({"linkedevents", "getlinkedevents"}),
+    frozenset({"getoperationwithdetails", "getoperationswithdetails"}),
+)
+
+
+def _anchor_key(raw: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (raw or "").lower())
+
+
+def _query_anchor_keys(text: str) -> set[str]:
+    """API-id + доменные фразы из реплики (для сверки original vs condensed)."""
+    from app.tools.search_kb.handler import extract_api_ids
+
+    keys: set[str] = set()
+    for api in extract_api_ids(text or ""):
+        key = _anchor_key(api)
+        if key:
+            keys.add(key)
+    for match in _TOPIC_PHRASE_RE.finditer(text or ""):
+        key = _anchor_key(match.group(0))
+        if key:
+            keys.add(key)
+    return keys
+
+
+def _expand_anchor_aliases(keys: set[str]) -> set[str]:
+    expanded = set(keys)
+    for group in _ANCHOR_ALIAS_GROUPS:
+        if expanded & group:
+            expanded |= group
+    return expanded
+
+
+def prefer_original_if_anchors_dropped(original: str, condensed: str) -> str:
+    """Если свёртка выкинула API-id / тему из исходной реплики — вернуть original.
+
+    Classic RAG и agent-путь: condense не имеет права подменить Linked Events
+    на «налог/комиссию из прошлого ответа».
+
+    Отвергнутые упоминания («не BASE_ORDER») якорями не считаются — иначе
+    хороший condensed с GET_OPERATIONS_WITH_DETAILS откатывается в «мне нужен tax».
+    """
+    from app.chat.media import strip_negated_mentions
+
+    orig = (original or "").strip()
+    cond = (condensed or "").strip()
+    if not orig:
+        return cond
+    if not cond or cond == orig:
+        return cond or orig
+
+    orig_for_anchors = strip_negated_mentions(orig)
+    orig_keys = _expand_anchor_aliases(_query_anchor_keys(orig_for_anchors))
+    if not orig_keys:
+        return cond
+
+    cond_keys = _expand_anchor_aliases(_query_anchor_keys(cond))
+    dropped = orig_keys - cond_keys
+    if dropped:
+        return orig
+    return cond
+
+
 def _references_dialog(text: str) -> bool:
     return bool(_DIALOG_REFERENCE_RE.search(text or ""))
 
 
-def _integration_layer_queries(current: str, history: list[ChatMessage]) -> list[str]:
-    """Дополнительные запросы под нужный слой интеграции."""
-    blob = f"{current}\n{recent_dialog_summary(history, limit=6)}"
+def integration_layer_query_extras(
+    current: str, *, dialog_blob: str = ""
+) -> list[str]:
+    """Доп. запросы под слой интеграции (BPH / HO→Composite / mapping).
+
+    ``dialog_blob`` — текстовая история (agent path) или пусто; current уже
+    должен содержать маркеры слоя, если история не передана.
+    """
+    blob = f"{current}\n{dialog_blob}"
     extras: list[str] = []
 
     if _HO_TO_COMPOSITE_RE.search(blob):
@@ -261,7 +354,9 @@ def _integration_layer_queries(current: str, history: list[ChatMessage]) -> list
         extras.append(f"{current} {terms}")
 
     if _BPH_LAYER_RE.search(blob):
-        extras.append(f"{current} GET_OPERATIONS_WITH_DETAILS BPH lead details funds_output")
+        extras.append(
+            f"{current} GET_OPERATIONS_WITH_DETAILS BPH lead details funds_output"
+        )
 
     if _MAPPING_RE.search(blob):
         extras.append(
@@ -269,6 +364,13 @@ def _integration_layer_queries(current: str, history: list[ChatMessage]) -> list
         )
 
     return extras
+
+
+def _integration_layer_queries(current: str, history: list[ChatMessage]) -> list[str]:
+    """Дополнительные запросы под нужный слой интеграции (classic RAG)."""
+    return integration_layer_query_extras(
+        current, dialog_blob=recent_dialog_summary(history, limit=6)
+    )
 
 
 def build_rag_queries(

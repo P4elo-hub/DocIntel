@@ -8,6 +8,7 @@ from app.chat.rag_query import (
     build_rag_queries,
     is_follow_up_clarification,
     needs_context_expansion,
+    prefer_original_if_anchors_dropped,
     recent_dialog_summary,
     sanitize_condensed,
 )
@@ -158,3 +159,26 @@ def test_needs_context_expansion_false_for_standalone_question():
 def test_needs_context_expansion_false_for_empty():
     assert not needs_context_expansion("")
     assert not needs_context_expansion("   ")
+
+
+def test_prefer_original_if_condense_drops_api_id():
+    original = (
+        "Помни, для чего нужен обмен GET-LINKED-EVENTS и какой у него формат в JSON."
+    )
+    bad = "Как выглядит JSON операции налога и комиссии в ленте?"
+    assert prefer_original_if_anchors_dropped(original, bad) == original
+    good = "GET_LINKED_EVENTS формат request/response JSON"
+    assert prefer_original_if_anchors_dropped(original, good) == good
+
+
+def test_prefer_original_if_condense_drops_linked_events_phrase():
+    original = "Напомни Linked Events: зачем обмен и пример JSON"
+    bad = "JSON комиссии в ленте"
+    assert prefer_original_if_anchors_dropped(original, bad) == original
+
+
+def test_prefer_original_keeps_condense_when_only_rejected_api_dropped():
+    # «не BASE_ORDER» — отвергнутый якорь, condensed с GOWD+налог должен остаться.
+    original = "мне нужен tax !!!! не BASE_ORDER"
+    good = "GET_OPERATIONS_WITH_DETAILS для налога"
+    assert prefer_original_if_anchors_dropped(original, good) == good

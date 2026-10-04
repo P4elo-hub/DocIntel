@@ -176,11 +176,14 @@ class Settings(BaseSettings):
     # build() и блокируют готовность RAG. Включать с HF-кэш-томом (см. docs/rag.md).
     rag_use_reranker: bool = False
     rag_reranker_model: str = "BAAI/bge-reranker-v2-m3"
-    # Гибрид выключен: llama-index-vector-stores-qdrant 0.8.8 в hybrid-режиме шлёт
-    # устаревший search_batch без имени вектора → Qdrant 400. Требует апгрейда
-    # qdrant-client>=1.16 + интеграции >=0.10 (сейчас пин <1.16).
+    # Hybrid (dense + BM25 via fastembed). Нужны qdrant-client>=1.16 и
+    # llama-index-vector-stores-qdrant>=0.10; после включения — full reindex
+    # (sparse-вектора в коллекции).
     rag_use_hybrid: bool = False
     rag_sparse_model: str = "Qdrant/bm25"
+    # Сколько кандидатов брать из BM25. Держим заметно меньше dense top_k,
+    # иначе точные имена API (SEND OPERATIONS) заливают топ кашей.
+    rag_sparse_top_k: int = 5
     # Контроль доступа на уровне поиска: фильтр visibility="internal" до ретрива.
     # Включать только когда корпус проиндексирован через IngestionService
     # (он проставляет visibility); на «голой» коллекции фильтр вернёт пусто.

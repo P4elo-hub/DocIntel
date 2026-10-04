@@ -3,18 +3,18 @@
 Архитектура (диплом / Telegram):
 
     START → classify_agent
-              ├─ search  → retrieve_rag (Qdrant) → END
+              ├─ search  → retrieve_rag (Qdrant + lexical expand) → END
               ├─ write   → retrieve_rag → write_agent → validate_agent → END
               └─ answer  → retrieve_rag → answer_agent → validate_agent → END
 
 Три сценария:
-1. **search** — только векторный поиск в Qdrant (чанки).
-2. **write** — документация фичи: Qdrant → kit-написнание → валидация по Qdrant.
-3. **answer** — ответ на вопрос: Qdrant → формулировка → валидация по Qdrant.
+1. **search** — Qdrant + lexical контракты из файлов KB.
+2. **write** — документация фичи: evidence → kit-написнание → валидация.
+3. **answer** — ответ на вопрос: evidence → формулировка → evidence-seeking validate.
 
-Retrieval всегда через ``RAGService`` / Qdrant, не через lexical ``search_kb``.
-
-Агенты **независимы** (нет общей LLM-сессии / shared message history).
+Retrieval: Qdrant hybrid+rerank, затем ``kb_expand`` только при дырке
+в контракте (search_kb / API-id → целые
+request/response секции). Агенты **независимы** (нет shared LLM-сессии).
 
 Для ДЗ Б6.3 ниже оставлены также ReAct-варианты (один агент с обоими tools):
 ``react_custom_graph`` / ``prebuilt_react_graph`` — для бенчмарка и отчёта.
@@ -549,18 +549,34 @@ def _parse_classify_response(raw: str) -> tuple[IntentLabel | None, bool | None]
 
 
 async def _condense_with_history(current: str, chat_history: str) -> str:
-    """Свернуть follow-up в самостоятельный запрос (когда use_history=True).
+    """Свернуть follow-up в самостоятельный поисковый запрос (use_history=True).
 
-    Вызывается только если classify уже выбрал history — всегда сворачиваем,
-    иначе длинные правки («ты уверен? … неверно … комиссии») остаются без
-    якоря обмена и RAG уезжает не туда.
+    При явной правке («не то») в condense идут только user-реплики — без JSON
+    прошлого ответа ассистента. Если свёртка выкинула API-id/тему из original —
+    откатываем (как в classic RAG).
     """
-    from app.chat.rag_query import CONDENSE_SYSTEM_PROMPT
+    from app.chat.rag_query import (
+        CONDENSE_SYSTEM_PROMPT,
+        is_follow_up_clarification,
+        prefer_original_if_anchors_dropped,
+        sanitize_condensed,
+    )
 
     text = (current or "").strip()
     history = (chat_history or "").strip()
     if not text or not history:
         return text
+
+    if is_follow_up_clarification(text):
+        chunks = re.split(r"\n(?=(?:Пользователь|User):)", history)
+        dialog_for_condense = "\n".join(
+            c for c in chunks if re.match(r"^(?:Пользователь|User):", c.strip())
+        )[:2500]
+    else:
+        dialog_for_condense = history[:2500]
+    if not dialog_for_condense.strip():
+        return text
+
     try:
         model = build_model(temperature=0.0).bind(max_tokens=200)
         response = await model.ainvoke(
@@ -568,7 +584,7 @@ async def _condense_with_history(current: str, chat_history: str) -> str:
                 SystemMessage(content=CONDENSE_SYSTEM_PROMPT),
                 HumanMessage(
                     content=(
-                        f"Контекст диалога:\n{history[:4000]}\n\n"
+                        f"Контекст диалога:\n{dialog_for_condense}\n\n"
                         f"Последний вопрос пользователя: {text}\n\n"
                         "Самостоятельный поисковый запрос:"
                     )
@@ -577,10 +593,22 @@ async def _condense_with_history(current: str, chat_history: str) -> str:
         )
         content = response.content
         raw = (content if isinstance(content, str) else str(content)).strip()
-        raw = raw.strip("\"'` ")
-        if raw and len(raw) < 500:
-            log.info("classify_condense original=%r condensed=%r", text[:100], raw[:100])
-            return raw
+        condensed = sanitize_condensed(raw, fallback=text, max_len=400)
+        kept = prefer_original_if_anchors_dropped(text, condensed)
+        if kept != condensed:
+            log.info(
+                "classify_condense_rejected_dropped_anchors original=%r condensed=%r",
+                text[:100],
+                condensed[:100],
+            )
+            return kept
+        if condensed and condensed != text:
+            log.info(
+                "classify_condense original=%r condensed=%r",
+                text[:100],
+                condensed[:100],
+            )
+            return condensed
     except Exception as exc:  # noqa: BLE001
         log.warning("classify_condense_failed: %s", exc)
     return text
@@ -794,11 +822,16 @@ intent_node = classify_agent_node
 
 
 async def retrieve_rag_node(state: DocIntelState) -> dict[str, Any]:
-    """Векторный retrieval из Qdrant → search_context (без search_kb / ReAct)."""
-    request = (state.get("user_request") or "").strip()
-    original = (state.get("original_user_message") or request).strip()
+    """Классический RAG: вопрос → Qdrant + lexical expand → search_context.
+
+    Сырая реплика всегда первая в multi-query (как classic RAG). Condensed —
+    дополнительный запрос при use_history, никогда не вместо original.
+    Отрицания («не про Linked Events») из запроса вырезаются.
+    """
+    condensed = (state.get("user_request") or "").strip()
+    original = (state.get("original_user_message") or condensed).strip()
     intent = state.get("intent")
-    history = (state.get("chat_history") or "").strip()
+    use_history = bool(state.get("use_history"))
     rag = get_rag_service()
 
     if rag is None:
@@ -811,29 +844,81 @@ async def retrieve_rag_node(state: DocIntelState) -> dict[str, Any]:
         }
         return out
 
-    from app.chat.media import extract_contract_anchors, normalize_domain_query
+    from app.chat.media import normalize_domain_query, retrieval_query_text
+    from app.chat.rag_query import integration_layer_query_extras
+    from app.services.docintel.kb_expand import expand_search_context
+    from app.tools.search_kb.handler import extract_api_ids
+
+    # Сырой запрос нельзя терять: он всегда primary (слоты prioritize_first).
+    # retrieval_query_text вычищает «не про X» и «SendOperations … не тот».
+    raw_query = retrieval_query_text(original) or original.strip()
+    condensed_query = ""
+    if use_history and condensed and condensed != original:
+        condensed_query = retrieval_query_text(condensed) or condensed.strip()
+        if condensed_query == raw_query:
+            condensed_query = ""
+
+    # API-id берём и из original до strip («не BASE_ORDER» не должен терять
+    # GET_OPERATIONS_WITH_DETAILS из condensed/истории).
+    api_source = " ".join(
+        x
+        for x in (
+            normalize_domain_query(original),
+            raw_query,
+            condensed_query,
+            condensed if use_history else "",
+        )
+        if x
+    )
+    # Если strip выкинул API из primary — вернём его в поисковую строку.
+    primary_apis = extract_api_ids(api_source)[:3]
+    if primary_apis and not extract_api_ids(raw_query):
+        raw_query = f"{raw_query} {' '.join(primary_apis)}".strip()
+
+    history_blob = (state.get("chat_history") or "").strip() if use_history else ""
+    layer_extras = integration_layer_query_extras(
+        raw_query or condensed_query, dialog_blob=history_blob
+    )
 
     queries: list[str] = []
-    norm_original = normalize_domain_query(original)
-    norm_request = normalize_domain_query(request)
-    for q in (original, norm_original, request, norm_request):
-        q = (q or "").strip()
+    for q in (raw_query, condensed_query, *layer_extras):
         if q and q not in queries:
             queries.append(q)
 
-    # Якоря обмена из текущей реплики + истории (Linked Events ≠ LinkedIn,
-    # иначе RAG уезжает в чужой screenData/комиссию композита).
-    for anchor in extract_contract_anchors(norm_original, norm_request, history):
-        if anchor not in queries:
-            queries.append(anchor)
-    queries = queries[:5]
+    # Отвергнутый API (SendOperations) уже вычищен retrieval_query_text;
+    # целевые id из original/condensed оставляем.
+    for api_id in primary_apis:
+        api_q = f"{api_id} параметры запроса ответа пример JSON request response"
+        # Для налога явно тянем TAX_WITHHOLDING, иначе lexical залипает на BASE_ORDER.
+        blob_low = api_source.lower()
+        if re.search(r"налог|\btax\b", blob_low):
+            api_q += " TAX_WITHHOLDING tax налог MONEY_DIAS"
+        if api_q not in queries:
+            queries.append(api_q)
+    queries = queries[:6]
+
+    primary = raw_query or condensed_query
+    prioritize_raw = bool(condensed_query) or len(queries) > 1
 
     print(
-        f"  → retrieve_rag: Qdrant retrieval queries={len(queries)}",
+        f"  → retrieve_rag: Qdrant retrieval queries={len(queries)} "
+        f"primary={primary[:80]!r}",
         flush=True,
     )
+    log.info(
+        "retrieve_rag query primary=%r condensed=%r original=%r "
+        "use_history=%s n_queries=%d apis=%s",
+        primary[:160],
+        condensed_query[:120],
+        original[:120],
+        use_history,
+        len(queries),
+        extract_api_ids(api_source)[:6],
+    )
     try:
-        result = await rag.retrieve_context_multi(queries, prioritize_first=True)
+        result = await rag.retrieve_context_multi(
+            queries, prioritize_first=prioritize_raw
+        )
     except Exception as exc:  # noqa: BLE001
         log.exception("retrieve_rag_failed")
         out = {
@@ -843,26 +928,41 @@ async def retrieve_rag_node(state: DocIntelState) -> dict[str, Any]:
         }
         return out
 
-    context = (result.get("context_str") or "").strip()
+    rag_context = (result.get("context_str") or "").strip()
     sources = list(result.get("sources") or [])
+
+    try:
+        context = expand_search_context(
+            _rag_kb_handler(),
+            query=raw_query or primary,
+            rag_context=rag_context,
+            extra_queries=[condensed_query] if condensed_query else None,
+        )
+    except Exception:  # noqa: BLE001
+        log.exception("retrieve_rag: kb_expand failed — оставляю только Qdrant")
+        context = rag_context
+
     log.info(
-        "retrieve_rag intent=%s confident=%s top_score=%s sources=%d chars=%d",
+        "retrieve_rag intent=%s confident=%s top_score=%s sources=%d "
+        "rag_chars=%d expanded_chars=%d apis=%s",
         intent,
         result.get("confident"),
         result.get("top_score"),
         len(sources),
+        len(rag_context),
         len(context),
+        extract_api_ids(api_source)[:6],
     )
 
     out = {
-        # search_context = только Qdrant (история НЕ подмешивается).
+        # search_context = Qdrant (+ lexical только при дырке). История не подмешивается.
         "search_context": context,
-        "rag_context": context,
+        "rag_context": rag_context,
         "rag_sources": sources,
         "agents_called": ["retrieve_rag"],
     }
     if intent == "search":
-        body = context or "Ничего релевантного не найдено в базе знаний (Qdrant)."
+        body = context or "Ничего релевантного не найдено в базе знаний."
         out["final_answer"] = append_sources_section(body, sources)
     return out
 
@@ -872,29 +972,36 @@ search_agent_node = retrieve_rag_node
 
 
 async def write_agent_node(state: DocIntelState) -> dict[str, Any]:
-    """Сценарий write: kit-subagents → draft документа фичи."""
+    """Сценарий write: selective kit-plan по последнему брифу → draft."""
     from app.services.docintel.orchestrator import SectionOrchestrator
     from app.tools.feature_sections import build_execution_plan
 
-    brief = state["user_request"]
-    original = (state.get("original_user_message") or brief).strip()
+    standalone = (state.get("user_request") or "").strip()
+    original = (state.get("original_user_message") or standalone).strip()
     history = (state.get("chat_history") or "").strip()
-    # history уже пустая, если classify сказал fresh.
+
+    # План секций — ТОЛЬКО текущий бриф (как selective context), без истории.
+    # Иначе слово из прошлого ответа («данных») включает write_data_model.
+    plan_brief = original or standalone
+
+    # Для генерации текст секций: текущий бриф + короткий диалог как уточнение,
+    # не как отдельный набор прошлых задач.
+    gen_brief = plan_brief
     if history:
-        brief = (
-            f"{brief}\n\n"
-            "Контекст диалога (classify оставил историю — "
-            "в integration опиши обмены из текущего брифа, не подменяй "
-            "чужими из истории):\n"
-            f"{history[:16_000]}"
+        gen_brief = (
+            f"{plan_brief}\n\n"
+            "Уточнения из текущего диалога (не отдельные прошлые задачи; "
+            "обмены/поля бери из брифа выше):\n"
+            f"{history[:4_000]}"
         )
-    # KB = только Qdrant; история уже в brief как диалог, не как контракт.
-    kb = (state.get("rag_context") or state.get("search_context") or "").strip()
-    plan = build_execution_plan(brief)
+
+    kb = (state.get("search_context") or state.get("rag_context") or "").strip()
+    plan = build_execution_plan(plan_brief)
     kit_names = [step.tool_name for step in plan]
     result = await SectionOrchestrator(_section_writer_client()).generate(
-        brief,
+        gen_brief,
         search_context=kb,
+        plan_brief=plan_brief,
     )
     answer = (result.text or "").strip()
     agents = ["write_agent", *kit_names]
@@ -906,25 +1013,23 @@ async def write_agent_node(state: DocIntelState) -> dict[str, Any]:
 
 
 async def answer_agent_node(state: DocIntelState) -> dict[str, Any]:
-    """Сценарий answer: формулировка ответа по search_context + история → draft."""
+    """Сценарий answer: вопрос + search_context → draft (без сырой истории)."""
     from app.services.docintel.answer_agent import write_answer_from_kb
 
     print("  → answer_agent: формулировка ответа по KB", flush=True)
+
     original = (state.get("original_user_message") or "").strip()
     standalone = (state.get("user_request") or "").strip()
-    user_request = standalone
-    if original and original != standalone:
+    # При history classify уже свернул диалог в standalone (condense).
+    user_request = original or standalone
+    if original and standalone and original != standalone:
         user_request = (
-            f"Исходная реплика: {original}\n"
-            f"Самостоятельная формулировка (с учётом диалога): {standalone}"
+            f"{original}\n\n(поисковая формулировка: {standalone})"
         )
-    # history уже пустая при fresh — второй раз не режем regex'ами.
-    history = (state.get("chat_history") or "").strip()
     draft = await write_answer_from_kb(
         _section_writer_client(),
         user_request=user_request,
         search_context=state.get("search_context") or "",
-        chat_history=history,
     )
     return {
         "draft_answer": draft,
@@ -934,30 +1039,27 @@ async def answer_agent_node(state: DocIntelState) -> dict[str, Any]:
 
 
 async def validate_agent_node(state: DocIntelState) -> dict[str, Any]:
-    """Независимый review: сверяет draft с чистым Qdrant (не с историей чата)."""
+    """Evidence-seeking review: draft vs expanded KB (lexical + Qdrant)."""
+    from app.chat.media import normalize_domain_query, retrieval_query_text
     from app.services.docintel.validator import validate_against_kb
-
-    from app.chat.media import extract_contract_anchors, normalize_domain_query
+    from app.tools.search_kb.handler import extract_api_ids
 
     draft = (state.get("draft_answer") or state.get("final_answer") or "").strip()
-    # Только Qdrant. Не search_context после старых merge и не прошлые ответы.
-    kb = (state.get("rag_context") or state.get("search_context") or "").strip()
+    # Expanded search_context предпочтительнее сырого rag_context.
+    kb = (state.get("search_context") or state.get("rag_context") or "").strip()
     original = normalize_domain_query(
         (state.get("original_user_message") or "").strip()
     )
     condensed = normalize_domain_query((state.get("user_request") or "").strip())
-    history = (state.get("chat_history") or "").strip()
     brief = original or condensed
     if original and condensed and original != condensed:
         brief = f"{original}\n\n(поисковая формулировка: {condensed})"
-    # Якорь обмена из истории (GET_LINKED_EVENTS), иначе follow-up про комиссии
-    # уедет в screenData и hard-ground это «окнет».
-    anchors = extract_contract_anchors(original, condensed, history)
-    if anchors:
-        brief = f"{brief}\n\n(целевой обмен/контракт: {'; '.join(anchors)})"
+    api_ids = extract_api_ids(retrieval_query_text(original, condensed))
+    if api_ids:
+        brief = f"{brief}\n\n(API: {', '.join(api_ids[:6])})"
     mode = "answer" if state.get("intent") == "answer" else "document"
     print(
-        f"  → validate_agent: независимый RAG-review всего документа (mode={mode})",
+        f"  → validate_agent: evidence-seeking review (mode={mode})",
         flush=True,
     )
     fixed = await validate_against_kb(
@@ -966,6 +1068,7 @@ async def validate_agent_node(state: DocIntelState) -> dict[str, Any]:
         search_context=kb,
         draft_answer=draft,
         mode=mode,
+        kb_handler=_rag_kb_handler(),
     )
     # Источники из retrieve_rag — в конец ответа/документа (reject/chat сюда не доходят).
     fixed = append_sources_section(fixed, state.get("rag_sources") or [])

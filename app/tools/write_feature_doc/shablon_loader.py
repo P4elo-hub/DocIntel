@@ -211,37 +211,137 @@ def _section_sort_key(section_id: str) -> tuple[int, str]:
     return (*numbers[:4], section_id)
 
 
+def _keyword_hit(brief_l: str, tokens: set[str], keyword: str) -> bool:
+    """Phrase keywords require substring; single tokens — exact token match.
+
+    Иначе «модель данных» срабатывает на любом «данных» из истории чата.
+    """
+    kw = (keyword or "").strip().lower()
+    if not kw:
+        return False
+    if " " in kw or "-" in kw:
+        return kw in brief_l
+    kw_tokens = _tokenize(kw)
+    if not kw_tokens:
+        return len(kw) > 2 and kw in tokens
+    return bool(tokens & kw_tokens)
+
+
 def _keyword_sections(brief: str) -> set[str]:
+    brief_l = (brief or "").lower()
     tokens = _tokenize(brief)
     chosen: set[str] = set()
     for section_id, keywords in _SECTION_KEYWORDS.items():
-        keyword_tokens: set[str] = set()
-        for keyword in keywords:
-            keyword_tokens |= _tokenize(keyword)
-        if tokens & keyword_tokens:
+        if any(_keyword_hit(brief_l, tokens, keyword) for keyword in keywords):
             chosen.add(section_id)
     return chosen
 
 
+def _wants_full_document(brief: str) -> bool:
+    brief_l = (brief or "").lower()
+    return any(
+        marker in brief_l
+        for marker in (
+            "документац",
+            "задокументир",
+            "спецификац",
+            "полный документ",
+            "полный спек",
+            "все разделы",
+        )
+    )
+
+
+def _wants_data_model(brief: str) -> bool:
+    """Модель данных только при явном изменении БД — не из JSON-контракта."""
+    brief_l = (brief or "").lower()
+    phrases = (
+        "модель данных",
+        "схема бд",
+        "схема базы",
+        "create table",
+        "alter table",
+        "миграц",
+        "liquibase",
+        "flyway",
+        "postgresql",
+        "postgres",
+        "новая таблиц",
+        "новые таблиц",
+        "entity ",
+        " er ",
+        "хранилище",
+        "изменение бд",
+        "изменить бд",
+        "ddl",
+    )
+    if any(p in brief_l for p in phrases):
+        return True
+    tokens = _tokenize(brief)
+    return bool(tokens & {"liquibase", "flyway", "postgresql", "ddl", "миграцию", "миграции"})
+
+
+def _is_contract_field_change(brief: str) -> bool:
+    """Узкая доработка контракта: новое поле/параметр в API, без смены процесса/БД."""
+    brief_l = (brief or "").lower()
+    if _wants_full_document(brief) or _wants_data_model(brief):
+        return False
+    tokens = _tokenize(brief)
+    fieldish = bool(
+        tokens
+        & _tokenize(
+            "параметр поле атрибут свойство yield проброс пробросить "
+            "добавить новый новая новое"
+        )
+    ) or any(
+        marker in brief_l
+        for marker in ("новый параметр", "новое поле", "добавить поле", "добавить параметр")
+    )
+    apiish = bool(_API_NAME_RE.search(brief or "")) or bool(
+        tokens & _tokenize("интеграция api обмен контракт request response")
+    )
+    process_rewrite = bool(
+        tokens
+        & _tokenize(
+            "перевести миграция kafka topic очередь заменить синхронный асинхронный"
+        )
+    )
+    return fieldish and apiish and not process_rewrite
+
+
 def infer_sections(feature_brief: str, explicit: str | None = None) -> list[str]:
+    """Выбор разделов по **текущему** брифу (селективно), не по шаблону «всё подряд».
+
+    История чата сюда передаваться не должна — иначе ложные срабатывания
+    (слово «данных» → CREATE TABLE).
+    """
     if explicit and explicit.lower() != "full":
         return sorted(
             [part.strip() for part in explicit.split(",") if part.strip()],
             key=_section_sort_key,
         )
 
-    chosen = set(_FULL_DOCUMENT_CORE)
-    chosen |= _keyword_sections(feature_brief)
+    brief = feature_brief or ""
+    brief_l = brief.lower()
+    field_only = _is_contract_field_change(brief)
 
-    # Миграция / доработка — AS IS обязателен
+    if field_only:
+        # Селективный минимум: цель + TO BE + контракт + observability.
+        # AS IS / data model / полный NFR — не тащим для «одного поля».
+        chosen = {"1.1", "1.3-usecase", "2", "4.1.1", "5.3.1", "5.3.2"}
+    else:
+        chosen = set(_FULL_DOCUMENT_CORE)
+        chosen |= _keyword_sections(brief)
+
+    # Миграция / доработка процесса — AS IS обязателен
     migration_markers = _tokenize("сейчас синхронно было текущ перевести миграция as is")
-    if _tokenize(feature_brief) & migration_markers:
+    if _tokenize(brief) & migration_markers:
         chosen.add("1.2-usecase")
 
     # Имя API/обмена или «новый параметр/поле» → sync integration + observability
-    api_change = bool(_API_NAME_RE.search(feature_brief))
+    api_change = bool(_API_NAME_RE.search(brief))
     param_change = bool(
-        _tokenize(feature_brief)
+        _tokenize(brief)
         & _tokenize("параметр поле атрибут свойство проброс пробросить добавить новый")
     )
     if api_change or ("4.1.1" in chosen) or param_change:
@@ -249,24 +349,29 @@ def infer_sections(feature_brief: str, explicit: str | None = None) -> list[str]
         chosen.add("5.3.1")
         chosen.add("5.3.2")
 
+    # Модель данных — только явный запрос на БД (не JSON tradeOrder из контракта)
+    if _wants_data_model(brief):
+        chosen.add("4.2.3")
+    else:
+        chosen.discard("4.2.3")
+
     # Kafka/async — событие, не модель данных по умолчанию
-    if "4.1.2" in chosen:
+    if "4.1.2" in chosen and not _wants_data_model(brief):
         chosen.discard("4.2.3")
 
     # Логи/метрики из brief
     observability = _tokenize("логирование логи метрики мониторинг producer consumer")
-    if _tokenize(feature_brief) & observability:
+    if _tokenize(brief) & observability:
         chosen.add("5.3.1")
         chosen.add("5.3.2")
 
-    # Полная документация фичи — базовый NFR-каркас (без раздувания UML/data).
-    # Стеммы: «документацию» / «задокументировать» не совпадут как целые токены.
-    brief_l = feature_brief.lower()
-    if any(
-        marker in brief_l
-        for marker in ("документац", "задокументир", "спецификац", "полный документ")
-    ):
+    # Полная документация фичи — базовый NFR-каркас (без раздувания data model).
+    if _wants_full_document(brief):
         chosen.update({
+            "1.1",
+            "1.2-usecase",
+            "1.3-usecase",
+            "2",
             "5.1",
             "5.2-performance",
             "5.2-reliability",
@@ -274,6 +379,15 @@ def infer_sections(feature_brief: str, explicit: str | None = None) -> list[str]
             "5.3.2",
             "5.4",
         })
+
+    # Safety: field-only никогда не тащит DDL-секцию
+    if field_only:
+        chosen.discard("4.2.3")
+        chosen.discard("5.1")
+        chosen.discard("5.2-performance")
+        chosen.discard("5.2-reliability")
+        chosen.discard("5.4")
+        chosen.discard("5.5")
 
     return sorted(chosen, key=_section_sort_key)
 
@@ -565,6 +679,12 @@ _SECTION_TOOL_INSTRUCTIONS: dict[str, list[str]] = {
     ],
     "write_data_model": [
         "Верни **только** `#### 4.2.3. Модель данных` внутри `## 4. Функциональные требования`.",
+        "Секция нужна **только при изменении БД** (новые/изменённые таблицы, миграции).",
+        "Если в брифе и search_context нет изменения схемы БД — НЕ выдумывай CREATE TABLE / ER "
+        "из JSON API. Верни короткий блок: «Изменения модели данных не требуются» + "
+        "`GAP-DATA-001` (нет DDL в evidence), без DDL.",
+        "Запрещено превращать поля контракта (tradeOrder, linkedEvents, yield) в таблицы Postgres "
+        "без явного требования к БД.",
     ],
     "write_nfr": [
         "Верни **только** подразделы NFR из скелета (без 5.3.1/5.3.2 — они в observability).",
